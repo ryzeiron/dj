@@ -158,6 +158,33 @@ class Handler(BaseHTTPRequestHandler):
             show.config["bpm"] = engine.clock.bpm
             return self._json({"bpm": engine.clock.bpm})
 
+        if path == "/api/auto":
+            engine.set_auto(body.get("mode") or None)
+            return self._json({"auto": engine.auto_mode})
+
+        if path == "/api/surprise":
+            return self._json({"live": engine.surprise()})
+
+        if path == "/api/wizard":
+            """First run: how many lamps, which mode, which interface."""
+            profile_id = str(body.get("profile_id") or "beam100_14ch")
+            addresses = show.auto_patch(int(body.get("count") or 2), profile_id)
+            output_config = body.get("output") or {"driver": "dummy"}
+            try:
+                description = engine.set_output(output_config)
+                error = None
+            except Exception as exc:
+                description = engine.output.describe()
+                error = str(exc)
+            show.config["wizard_done"] = True
+            show.save()
+            return self._json({
+                "addresses": addresses,
+                "output": description,
+                "output_error": error,
+                "conflicts": show.patch_conflicts(),
+            })
+
         if path == "/api/look/activate":
             ok = engine.activate_look(str(body.get("id", "")))
             return self._json({"ok": ok, "active": engine.active_look_id})

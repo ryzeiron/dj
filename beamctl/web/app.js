@@ -1,20 +1,22 @@
-/* beamctl — interface live. Pas de framework : fetch + DOM. */
+/* beamctl — interface live. Pas de framework : fetch + canvas + DOM. */
 "use strict";
 
 const TOKEN = new URLSearchParams(location.search).get("t");
 const $ = (id) => document.getElementById(id);
 
 const COLORS = {
-  "blanc": "#fdfdf5", "rouge": "#ff2d2d", "vert": "#25e05a", "bleu": "#2b6bff",
-  "jaune": "#ffd21e", "orange": "#ff7a18", "cyan": "#22e0ff", "rose": "#ff3fae",
-  "violet": "#a03cff", "arc-en-ciel": "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)",
-  "ouvert": "#333a4a"
+  "blanc": [253, 253, 245], "rouge": [255, 45, 45], "vert": [37, 224, 90],
+  "bleu": [43, 107, 255], "jaune": [255, 210, 30], "orange": [255, 122, 24],
+  "cyan": [34, 224, 255], "rose": [255, 63, 174], "violet": [160, 60, 255],
+  "arc-en-ciel": null   // teinte qui defile
 };
 const LENGTHS = [0.5, 1, 2, 4, 8, 16, 32];
 
 let show = null;      // patch, looks, profils, effets
 let status = null;    // etat courant du moteur
 let touching = false; // un fader est en cours de manipulation
+let smooth = [];      // etats lisses pour l'animation
+let expert = localStorage.getItem("beamctl.expert") === "1";
 
 /* ------------------------------------------------------------------ api */
 async function api(path, body) {
@@ -43,9 +45,119 @@ function mainProfile() {
 function currentLook() {
   return (status && status.look) || {};
 }
-function swatchStyle(name) {
-  const color = COLORS[name] || "#666";
-  return color.startsWith("linear") ? `background:${color}` : `background:${color}`;
+function rgbOf(name, time) {
+  const rgb = COLORS[name];
+  if (rgb) return rgb;
+  const hue = ((time || 0) * 60) % 360;          // arc-en-ciel anime
+  const f = (n) => {
+    const k = (n + hue / 30) % 12;
+    return Math.round(255 * (1 - Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1))));
+  };
+  return [f(0), f(8), f(4)];
+}
+function cssColor(name, alpha, time) {
+  const [r, g, b] = rgbOf(name, time);
+  return alpha === undefined ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* ------------------------------------------------------- apercu scenique */
+function tickSmooth() {
+  const fixtures = (status && status.fixtures) || [];
+  if (smooth.length !== fixtures.length) {
+    smooth = fixtures.map((f) => Object.assign({ pan: 0.5, tilt: 0.5, dimmer: 0 },
+                                               f.state || {}));
+  }
+  fixtures.forEach((fixture, index) => {
+    const target = fixture.state || {};
+    const current = smooth[index];
+    const k = 0.25;                                  // lissage exponentiel
+    current.pan += ((target.pan ?? 0.5) - current.pan) * k;
+    current.tilt += ((target.tilt ?? 0.5) - current.tilt) * k;
+    current.dimmer += ((target.dimmer ?? 0) - current.dimmer) * 0.35;
+    current.color = target.color;
+    current.strobe = target.strobe || 0;
+  });
+}
+
+function drawStage(timestamp) {
+  const canvas = $("stage");
+  const context = canvas.getContext("2d");
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (canvas.width !== Math.round(width * ratio)) {
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+  }
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+  const time = timestamp / 1000;
+  context.clearRect(0, 0, width, height);
+
+  // sol
+  const floor = context.createLinearGradient(0, height * 0.55, 0, height);
+  floor.addColorStop(0, "#0e1119");
+  floor.addColorStop(1, "#161b26");
+  context.fillStyle = floor;
+  context.fillRect(0, height * 0.55, width, height * 0.45);
+  context.fillStyle = "#0b0d12";
+  context.fillRect(0, 0, width, height * 0.55);
+
+  const count = smooth.length;
+  if (!count) return;
+
+  context.globalCompositeOperation = "lighter";
+  smooth.forEach((state, index) => {
+    const headX = width * (index + 0.5) / count;
+    const headY = 16;
+    const targetX = state.pan * width;
+    const targetY = height * 0.42 + state.tilt * height * 0.55;
+
+    let level = Math.max(0, Math.min(1, state.dimmer));
+    if (state.strobe > 0) {                          // clignotement visible
+      level *= (Math.sin(time * state.strobe * Math.PI * 2) > 0) ? 1 : 0.08;
+    }
+    if (level < 0.01) return;
+
+    const color = (alpha) => cssColor(state.color, alpha, time);
+    const spread = 14 + level * 12;
+
+    const gradient = context.createLinearGradient(headX, headY, targetX, targetY);
+    gradient.addColorStop(0, color(0.8 * level));
+    gradient.addColorStop(1, color(0.12 * level));
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.moveTo(headX - 5, headY);
+    context.lineTo(headX + 5, headY);
+    context.lineTo(targetX + spread, targetY);
+    context.lineTo(targetX - spread, targetY);
+    context.closePath();
+    context.fill();
+
+    const pool = context.createRadialGradient(targetX, targetY, 0, targetX, targetY, spread * 2);
+    pool.addColorStop(0, color(0.95 * level));
+    pool.addColorStop(1, color(0));
+    context.fillStyle = pool;
+    context.beginPath();
+    context.ellipse(targetX, targetY, spread * 2, spread * 0.9, 0, 0, Math.PI * 2);
+    context.fill();
+  });
+
+  // tetes
+  context.globalCompositeOperation = "source-over";
+  smooth.forEach((state, index) => {
+    const headX = width * (index + 0.5) / count;
+    context.fillStyle = "#2a3040";
+    context.fillRect(headX - 11, 4, 22, 13);
+    context.fillStyle = cssColor(state.color, Math.max(0.15, state.dimmer), time);
+    context.fillRect(headX - 6, 14, 12, 4);
+  });
+}
+
+function animate(timestamp) {
+  tickSmooth();
+  drawStage(timestamp || 0);
+  requestAnimationFrame(animate);
 }
 
 /* ------------------------------------------------------------- rendering */
@@ -56,12 +168,15 @@ function renderLooks() {
     const button = document.createElement("button");
     button.className = "look" + (status && status.active_look_id === look.id ? " active" : "");
     const key = index < 9 ? String(index + 1) : index === 9 ? "0" : "";
-    const palette = look.color_mode === "static" ? [look.color] : (look.colors.length ? look.colors : [look.color]);
+    const palette = look.color_mode === "static"
+      ? [look.color]
+      : (look.colors.length ? look.colors : [look.color]);
+    const chips = palette.slice(0, 4)
+      .map((c) => `<i style="background:${cssColor(c, 1, 0)}"></i>`).join("");
     button.innerHTML =
-      `<span class="chip" style="${swatchStyle(palette[0])}"></span>` +
       `<span class="key">${key}</span>` +
-      `<span>${look.name}</span>` +
-      `<em>${effectLabel(look.position_effect)} · ${effectLabel(look.intensity_effect)}</em>`;
+      `<span class="lookName">${look.name}</span>` +
+      `<span class="dots">${chips}<em>${"·".repeat(look.energy || 2)}</em></span>`;
     button.onclick = async () => {
       await api("/api/look/activate", { id: look.id });
       await refreshStatus();
@@ -95,7 +210,7 @@ function renderLiveOptions() {
     effects.filter((e) => e.kind === "position").map((e) => ({ value: e.id, label: e.label })),
     currentLook().position_effect || "none");
   fillSelect($("intensityEffect"),
-    effects.filter((e) => e.kind === "intensity").concat([{ id: "none", label: "Aucune" }])
+    [{ id: "none", label: "Aucun" }].concat(effects.filter((e) => e.kind === "intensity"))
       .map((e) => ({ value: e.id, label: e.label })),
     currentLook().intensity_effect || "none");
   fillSelect($("gobo"), (profile.gobos || ["ouvert"]).map((g) => ({ value: g, label: g })),
@@ -109,7 +224,9 @@ function renderLiveOptions() {
     swatch.className = "swatch";
     swatch.title = name;
     swatch.dataset.color = name;
-    swatch.style.cssText = swatchStyle(name);
+    swatch.style.background = name === "arc-en-ciel"
+      ? "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"
+      : cssColor(name, 1, 0);
     swatch.onclick = () => {
       setLive({ color: name, color_mode: "static" });
       [...swatches.children].forEach((c) => c.classList.toggle("on", c === swatch));
@@ -121,11 +238,13 @@ function renderLiveOptions() {
 function syncControls() {
   const look = currentLook();
   if (!look || touching) return;
+  $("stageBadge").textContent = look.name || "";
   $("positionEffect").value = look.position_effect || "none";
   $("intensityEffect").value = look.intensity_effect || "none";
   $("gobo").value = look.gobo || "ouvert";
   $("prism").checked = !!look.prism;
-  setSlider("length", LENGTHS.indexOf(look.length) < 0 ? 3 : LENGTHS.indexOf(look.length));
+  const lengthIndex = LENGTHS.indexOf(look.length);
+  setSlider("length", lengthIndex < 0 ? 3 : lengthIndex);
   setSlider("size", Math.round((look.size || 0) * 100));
   setSlider("spread", Math.round((look.spread || 0) * 100));
   setSlider("dimmer", Math.round((look.dimmer || 0) * 100));
@@ -152,31 +271,6 @@ function updateLabels() {
   $("speedVal").textContent = $("speed").value + "%";
 }
 
-function renderRig() {
-  const rig = $("rig");
-  const fixtures = (status && status.fixtures) || [];
-  if (rig.children.length !== fixtures.length) {
-    rig.innerHTML = fixtures.map((fixture) =>
-      `<div class="head" data-id="${fixture.id}">
-         <div>${fixture.name}</div>
-         <div class="beam"><span class="dot"></span></div>
-         <b>ch ${fixture.address}</b>
-       </div>`).join("");
-  }
-  fixtures.forEach((fixture, index) => {
-    const card = rig.children[index];
-    if (!card) return;
-    const dot = card.querySelector(".dot");
-    const state = fixture.state || {};
-    const color = COLORS[state.color] || "#fff";
-    dot.style.left = ((state.pan || 0.5) * 100) + "%";
-    dot.style.top = ((state.tilt || 0.5) * 100) + "%";
-    dot.style.background = color.startsWith("linear") ? "#fff" : color;
-    dot.style.color = color.startsWith("linear") ? "#fff" : color;
-    dot.style.opacity = Math.max(0.06, state.dimmer || 0);
-  });
-}
-
 function renderDmx() {
   const view = $("dmxView");
   const data = (status && status.dmx) || [];
@@ -187,6 +281,12 @@ function renderDmx() {
     const cell = view.children[i];
     if (cell) cell.lastElementChild.textContent = value;
   });
+}
+
+function applyExpert() {
+  document.querySelectorAll(".expertOnly").forEach((node) =>
+    node.classList.toggle("hidden", !expert));
+  $("expertToggle").checked = expert;
 }
 
 /* ------------------------------------------------------------- live edit */
@@ -218,44 +318,49 @@ function renderLookEditor() {
     const item = document.createElement("div");
     item.className = "item";
     item.innerHTML =
-      `<div class="field"><label>Nom</label><input type="text" value="${look.name}"></div>
+      `<div class="field"><label>Nom</label><input class="l-name" type="text" value="${look.name}"></div>
        <div class="field"><label>Palette (couleurs séparées par des virgules)</label>
-         <input type="text" value="${(look.colors || []).join(', ')}"></div>
+         <input class="l-colors" type="text" value="${(look.colors || []).join(', ')}"></div>
        <div class="field"><label>Mode couleur</label>
-         <select>
-           <option value="static">fixe</option>
+         <select class="l-mode">
+           <option value="static">une seule couleur</option>
            <option value="chase">défilement</option>
            <option value="spread">une par lampe</option>
-           <option value="random">aléatoire</option>
+           <option value="random">au hasard</option>
+         </select></div>
+       <div class="field"><label>Énergie</label>
+         <select class="l-energy">
+           <option value="1">calme</option>
+           <option value="2">normal</option>
+           <option value="3">gros son</option>
          </select></div>
        <div class="row">
-         <button class="mini accent">enregistrer</button>
-         <button class="mini">dupliquer</button>
-         <button class="mini danger">supprimer</button>
+         <button class="mini accent l-save">enregistrer</button>
+         <button class="mini l-dup">dupliquer</button>
+         <button class="mini danger l-del">supprimer</button>
        </div>`;
-    const [nameInput, colorsInput] = item.querySelectorAll("input");
-    const modeSelect = item.querySelector("select");
-    modeSelect.value = look.color_mode || "static";
-    const [saveButton, dupButton, deleteButton] = item.querySelectorAll("button");
+    item.querySelector(".l-mode").value = look.color_mode || "static";
+    item.querySelector(".l-energy").value = String(look.energy || 2);
 
-    saveButton.onclick = async () => {
+    item.querySelector(".l-save").onclick = async () => {
       const updated = Object.assign({}, look, {
-        name: nameInput.value.trim() || look.name,
-        colors: colorsInput.value.split(",").map((s) => s.trim()).filter(Boolean),
-        color_mode: modeSelect.value
+        name: item.querySelector(".l-name").value.trim() || look.name,
+        colors: item.querySelector(".l-colors").value.split(",").map((s) => s.trim()).filter(Boolean),
+        color_mode: item.querySelector(".l-mode").value,
+        energy: +item.querySelector(".l-energy").value
       });
       await api("/api/look/save", { look: updated });
       await reload();
     };
-    dupButton.onclick = async () => {
-      const copy = Object.assign({}, look, {
-        id: "l" + Date.now().toString(36),
-        name: look.name + " (copie)"
+    item.querySelector(".l-dup").onclick = async () => {
+      await api("/api/look/save", {
+        look: Object.assign({}, look, {
+          id: "l" + Date.now().toString(36), name: look.name + " (copie)"
+        })
       });
-      await api("/api/look/save", { look: copy });
       await reload();
     };
-    deleteButton.onclick = async () => {
+    item.querySelector(".l-del").onclick = async () => {
       if (!confirm("Supprimer « " + look.name + " » ?")) return;
       await api("/api/look/delete", { id: look.id });
       await reload();
@@ -273,20 +378,20 @@ function renderPatch() {
     item.className = "item";
     item.innerHTML =
       `<div class="field"><label>Nom</label><input class="f-name" type="text" value="${fixture.name}"></div>
-       <div class="field"><label>Profil</label><select class="f-profile"></select></div>
+       <div class="field"><label>Modèle</label><select class="f-profile"></select></div>
        <div class="field"><label>Adresse DMX</label>
          <input class="f-address" type="number" min="1" max="512" value="${fixture.address}"></div>
        <div class="field"><label>Ordre</label>
          <input class="f-order" type="number" min="0" value="${fixture.order}"></div>
-       <label class="check"><input class="f-ipan" type="checkbox" ${fixture.invert_pan ? "checked" : ""}> inverser pan</label>
-       <label class="check"><input class="f-itilt" type="checkbox" ${fixture.invert_tilt ? "checked" : ""}> inverser tilt</label>
+       <label class="check"><input class="f-ipan" type="checkbox" ${fixture.invert_pan ? "checked" : ""}> inverser gauche/droite</label>
+       <label class="check"><input class="f-itilt" type="checkbox" ${fixture.invert_tilt ? "checked" : ""}> inverser haut/bas</label>
        <label class="check"><input class="f-on" type="checkbox" ${fixture.enabled ? "checked" : ""}> active</label>
        <div class="row">
-         <button class="mini f-solo">solo</button>
+         <button class="mini f-solo">tester seule</button>
          <button class="mini danger f-del">retirer</button>
        </div>`;
-    const select = item.querySelector(".f-profile");
-    fillSelect(select, (show.profiles || []).map((p) => ({ value: p.id, label: p.name })), fixture.profile_id);
+    fillSelect(item.querySelector(".f-profile"),
+      (show.profiles || []).map((p) => ({ value: p.id, label: p.name })), fixture.profile_id);
     item.querySelector(".f-del").onclick = () => { show.fixtures.splice(index, 1); renderPatch(); };
     item.querySelector(".f-solo").onclick = async () => {
       const solo = status && status.solo === fixture.id ? null : fixture.id;
@@ -317,8 +422,9 @@ function collectPatch() {
 
 function renderOutputFields() {
   const driver = $("driver").value;
-  $("fieldHost").classList.toggle("hidden", driver !== "artnet" && driver !== "sacn");
-  $("fieldUniverse").classList.toggle("hidden", driver !== "artnet" && driver !== "sacn");
+  const network = driver === "artnet" || driver === "sacn";
+  $("fieldHost").classList.toggle("hidden", !network);
+  $("fieldUniverse").classList.toggle("hidden", !network);
   $("fieldPort").classList.toggle("hidden", driver !== "enttec" && driver !== "opendmx");
 }
 
@@ -331,7 +437,42 @@ function describeTestChannel(address) {
       return `${fixture.name} · canal ${offset + 1} du profil : ${profile.channels[offset]}`;
     }
   }
-  return "aucune lampe patchée sur ce canal";
+  return "aucune lampe sur ce canal";
+}
+
+/* -------------------------------------------------------------- wizard */
+const wizard = { count: 2, profile: "beam100_14ch", output: { driver: "dummy" } };
+
+function openWizard() {
+  const choices = $("wizCount");
+  choices.innerHTML = "";
+  [1, 2, 3, 4, 6, 8].forEach((n) => {
+    const button = document.createElement("button");
+    button.className = "choice";
+    button.innerHTML = `${n}<small>lampe${n > 1 ? "s" : ""}</small>`;
+    button.onclick = () => { wizard.count = n; wizStep(2); };
+    choices.appendChild(button);
+  });
+  wizStep(1);
+  $("wizard").classList.remove("hidden");
+}
+
+function wizStep(step) {
+  [1, 2, 3, 4].forEach((n) => $("wizStep" + n).classList.toggle("hidden", n !== step));
+  $("wizExtra").classList.add("hidden");
+}
+
+async function wizFinish() {
+  const response = await api("/api/wizard", {
+    count: wizard.count, profile_id: wizard.profile, output: wizard.output
+  });
+  $("wizAddresses").innerHTML = response.addresses
+    .map((address, i) => `<div><b>Beam ${i + 1}</b><span>adresse ${address}</span></div>`).join("");
+  $("wizOutput").textContent = response.output_error
+    ? "⚠ " + response.output_error
+    : "Interface : " + response.output;
+  wizStep(4);
+  await reload();
 }
 
 /* ------------------------------------------------------------- polling */
@@ -341,14 +482,15 @@ async function refreshStatus() {
   $("outputName").textContent = status.output;
   $("blackout").classList.toggle("on", status.blackout);
   $("strobe").classList.toggle("on", status.strobe);
-  $("freeze").classList.toggle("on", status.freeze);
   $("masterVal").textContent = Math.round(status.master_dimmer * 100) + "%";
   setSlider("master", Math.round(status.master_dimmer * 100));
   const beat = Math.floor(status.bar_phase * 4) % 4;
-  [...document.querySelectorAll(".beatDots i")].forEach((dot, i) => dot.classList.toggle("on", i === beat));
+  [...document.querySelectorAll(".beatDots i")].forEach((dot, i) =>
+    dot.classList.toggle("on", i === beat));
+  document.querySelectorAll("[data-auto]").forEach((button) =>
+    button.classList.toggle("on", (button.dataset.auto || "") === (status.auto || "")));
   alertBox(status.output_error);
-  renderRig();
-  if (!$("page-setup").classList.contains("hidden")) renderDmx();
+  if (expert && !$("page-setup").classList.contains("hidden")) renderDmx();
   if (refreshStatus.lastLook !== status.active_look_id) {
     refreshStatus.lastLook = status.active_look_id;
     renderLooks();
@@ -364,18 +506,21 @@ async function reload() {
   syncControls();
   renderLookEditor();
   renderPatch();
-  $("driver").value = (show.config.output || {}).driver || "dummy";
-  $("host").value = (show.config.output || {}).host || "";
-  $("universe").value = (show.config.output || {}).universe ?? 0;
-  $("serialPort").value = (show.config.output || {}).port || "";
+  const output = show.config.output || {};
+  $("driver").value = output.driver || "dummy";
+  $("host").value = output.host || "";
+  $("universe").value = output.universe ?? 0;
+  $("serialPort").value = output.port || "";
   renderOutputFields();
+  applyExpert();
 }
 
 /* --------------------------------------------------------------- events */
 function bindEvents() {
-  document.querySelectorAll(".tab").forEach((tab) => {
+  document.querySelectorAll(".tab[data-page]").forEach((tab) => {
     tab.onclick = () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+      document.querySelectorAll(".tab[data-page]").forEach((t) =>
+        t.classList.toggle("active", t === tab));
       ["live", "looks", "setup"].forEach((page) =>
         $("page-" + page).classList.toggle("hidden", page !== tab.dataset.page));
     };
@@ -383,10 +528,6 @@ function bindEvents() {
 
   $("blackout").onclick = async () => {
     await api("/api/master", { blackout: !status.blackout });
-    await refreshStatus();
-  };
-  $("freeze").onclick = async () => {
-    await api("/api/master", { freeze: !status.freeze });
     await refreshStatus();
   };
   const strobe = (on) => api("/api/master", { strobe: on }).then(refreshStatus).catch(() => {});
@@ -405,6 +546,15 @@ function bindEvents() {
     button.onclick = () => api("/api/tempo", { nudge: +button.dataset.nudge }).then(refreshStatus);
   });
 
+  document.querySelectorAll("[data-auto]").forEach((button) => {
+    button.onclick = () => api("/api/auto", { mode: button.dataset.auto }).then(refreshStatus);
+  });
+  $("surprise").onclick = async () => {
+    await api("/api/surprise", {});
+    await refreshStatus();
+    syncControls();
+  };
+
   bindFader("length", "length", (v) => LENGTHS[v]);
   bindFader("size", "size", (v) => v / 100);
   bindFader("spread", "spread", (v) => v / 100);
@@ -418,11 +568,14 @@ function bindEvents() {
   $("prism").onchange = (e) => setLive({ prism: e.target.checked });
 
   $("storeLive").onclick = async () => { await api("/api/live/store", {}); await reload(); };
-  $("clearLive").onclick = async () => { await api("/api/live/clear", {}); await refreshStatus(); syncControls(); };
+  $("clearLive").onclick = async () => {
+    await api("/api/live/clear", {});
+    await refreshStatus();
+    syncControls();
+  };
 
   $("addLook").onclick = async () => {
-    const id = "l" + Date.now().toString(36);
-    await api("/api/look/save", { look: { id, name: "Nouveau look" } });
+    await api("/api/look/save", { look: { id: "l" + Date.now().toString(36), name: "Nouveau look" } });
     await reload();
   };
 
@@ -473,6 +626,12 @@ function bindEvents() {
     } catch (e) { alertBox(String(e)); }
   };
 
+  $("expertToggle").onchange = (event) => {
+    expert = event.target.checked;
+    localStorage.setItem("beamctl.expert", expert ? "1" : "0");
+    applyExpert();
+  };
+
   const sendTest = () => {
     const address = +$("testChannel").value;
     $("testVal").textContent = $("testValue").value;
@@ -485,14 +644,63 @@ function bindEvents() {
     $("testInfo").textContent = "canaux relâchés";
   });
 
+  // assistant
+  $("openWizard").onclick = openWizard;
+  $("wizClose").onclick = () => $("wizard").classList.add("hidden");
+  $("wizDone").onclick = () => $("wizard").classList.add("hidden");
+  document.querySelectorAll("[data-profile]").forEach((button) => {
+    button.onclick = () => { wizard.profile = button.dataset.profile; wizStep(3); };
+  });
+  document.querySelectorAll("[data-driver]").forEach((button) => {
+    button.onclick = () => {
+      const driver = button.dataset.driver;
+      wizard.output = { driver };
+      if (driver === "dummy") return wizFinish();
+      const network = driver === "artnet";
+      $("wizExtraLabel").textContent = network
+        ? "Adresse IP du boîtier (laisse vide pour diffuser à tout le réseau)"
+        : "Port série du boîtier (python -m beamctl --list-serial pour le trouver)";
+      $("wizExtraInput").value = network ? "" : "/dev/ttyUSB0";
+      $("wizExtraInput").placeholder = network ? "192.168.1.50" : "/dev/ttyUSB0 ou COM3";
+      $("wizExtra").classList.remove("hidden");
+    };
+  });
+  $("wizExtraOk").onclick = () => {
+    const value = $("wizExtraInput").value.trim();
+    if (wizard.output.driver === "artnet") {
+      if (value) wizard.output.host = value;
+    } else {
+      wizard.output.port = value;
+    }
+    wizFinish();
+  };
+
+  // aide
+  $("helpBtn").onclick = () => $("help").classList.remove("hidden");
+  $("helpClose").onclick = () => $("help").classList.add("hidden");
+  document.querySelectorAll(".overlay").forEach((overlay) => {
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) overlay.classList.add("hidden");
+    });
+  });
+
   document.addEventListener("keydown", (event) => {
     if (event.repeat || /input|select|textarea/i.test(event.target.tagName)) return;
     const key = event.key.toLowerCase();
     if (key === " ") { event.preventDefault(); $("blackout").click(); }
     else if (key === "t") $("tap").click();
-    else if (key === "f") $("freeze").click();
     else if (key === "s") strobe(true);
-    else if (/^[0-9]$/.test(key)) {
+    else if (key === "r") $("surprise").click();
+    else if (key === "escape") document.querySelectorAll(".overlay").forEach((o) => o.classList.add("hidden"));
+    else if (key === "a") {
+      const next = status && status.auto ? "" : "normal";
+      api("/api/auto", { mode: next }).then(refreshStatus);
+    } else if (key === "arrowup" || key === "arrowdown") {
+      event.preventDefault();
+      const step = key === "arrowup" ? 5 : -5;
+      const value = Math.max(0, Math.min(100, Math.round(status.master_dimmer * 100) + step));
+      api("/api/master", { dimmer: value / 100 }).then(refreshStatus);
+    } else if (/^[0-9]$/.test(key)) {
       const index = key === "0" ? 9 : +key - 1;
       const button = $("lookGrid").children[index];
       if (button) button.click();
@@ -506,10 +714,12 @@ function bindEvents() {
 /* ----------------------------------------------------------------- boot */
 (async function main() {
   bindEvents();
+  requestAnimationFrame(animate);
   try {
     await reload();
+    if (!show.config.wizard_done) openWizard();
   } catch (e) {
     alertBox("Connexion impossible : " + e);
   }
-  setInterval(() => refreshStatus().catch(() => {}), 200);
+  setInterval(() => refreshStatus().catch(() => {}), 150);
 })();

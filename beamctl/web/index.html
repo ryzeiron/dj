@@ -14,19 +14,24 @@
   <div class="brand">beamctl<span id="outputName"></span></div>
   <nav class="tabs">
     <button class="tab active" data-page="live">Live</button>
-    <button class="tab" data-page="looks">Looks</button>
-    <button class="tab" data-page="setup">Config</button>
+    <button class="tab" data-page="looks">Mes looks</button>
+    <button class="tab" data-page="setup">Réglages</button>
+    <button class="tab ghost" id="helpBtn" title="Aide">?</button>
   </nav>
   <div id="alert" class="alert hidden"></div>
 </header>
 
-<!-- ------------------------------------------------------------------ -->
+<!-- ================================================================ LIVE -->
 <section id="page-live" class="page">
+
+  <div class="stageWrap">
+    <canvas id="stage" class="stage"></canvas>
+    <div id="stageBadge" class="stageBadge">Ambiance</div>
+  </div>
 
   <div class="masters">
     <button id="blackout" class="big danger">BLACKOUT<small>espace</small></button>
     <button id="strobe" class="big warn">STROBE<small>maintenir · S</small></button>
-    <button id="freeze" class="big">FREEZE<small>F</small></button>
     <div class="tempo">
       <button id="tap" class="big accent">TAP<small>T</small></button>
       <div class="tempoInfo">
@@ -40,79 +45,107 @@
       </div>
     </div>
     <label class="fader">
-      <span>Master <b id="masterVal">100%</b></span>
+      <span>Luminosité <b id="masterVal">100%</b></span>
       <input id="master" type="range" min="0" max="100" value="100">
     </label>
   </div>
 
-  <h2>Looks</h2>
-  <div id="lookGrid" class="grid looks"></div>
-
-  <h2>Réglages en direct <button id="storeLive" class="mini">enregistrer dans le look</button>
-    <button id="clearLive" class="mini">annuler</button></h2>
-
-  <div class="panel">
-    <div class="field">
-      <label>Couleur</label>
-      <div id="colorSwatches" class="swatches"></div>
-    </div>
-    <div class="field">
-      <label>Gobo</label>
-      <select id="gobo"></select>
-    </div>
-    <div class="field">
-      <label>Mouvement</label>
-      <select id="positionEffect"></select>
-    </div>
-    <div class="field">
-      <label>Intensité</label>
-      <select id="intensityEffect"></select>
-    </div>
-    <label class="fader"><span>Vitesse <b id="lengthVal">4 temps</b></span>
-      <input id="length" type="range" min="0" max="6" step="1" value="2"></label>
-    <label class="fader"><span>Amplitude <b id="sizeVal">60%</b></span>
-      <input id="size" type="range" min="0" max="100" value="60"></label>
-    <label class="fader"><span>Décalage <b id="spreadVal">100%</b></span>
-      <input id="spread" type="range" min="0" max="100" value="100"></label>
-    <label class="fader"><span>Intensité <b id="dimmerVal">100%</b></span>
-      <input id="dimmer" type="range" min="0" max="100" value="100"></label>
-    <label class="fader"><span>Pan <b id="panVal">50%</b></span>
-      <input id="pan" type="range" min="0" max="100" value="50"></label>
-    <label class="fader"><span>Tilt <b id="tiltVal">35%</b></span>
-      <input id="tilt" type="range" min="0" max="100" value="35"></label>
-    <label class="fader"><span>Lenteur mvt <b id="speedVal">0%</b></span>
-      <input id="speed" type="range" min="0" max="100" value="0"></label>
-    <label class="check"><input id="prism" type="checkbox"> Prisme</label>
+  <h2>Pilote automatique <span class="tip">le logiciel change les lumières tout seul, en rythme</span></h2>
+  <div class="autoRow">
+    <button class="auto on" data-auto="">Je pilote<small>manuel</small></button>
+    <button class="auto" data-auto="doux">Chill<small>change toutes les 16 mesures</small></button>
+    <button class="auto" data-auto="normal">Normal<small>toutes les 8 mesures</small></button>
+    <button class="auto" data-auto="feu">Ça envoie<small>toutes les 4 mesures</small></button>
+    <button id="surprise" class="auto dice">🎲 Surprise<small>invente un look · touche R</small></button>
   </div>
 
-  <h2>Rig</h2>
-  <div id="rig" class="rig"></div>
+  <h2>Looks <span class="tip">clique, ou tape le chiffre au clavier</span></h2>
+  <div id="lookGrid" class="grid looks"></div>
+
+  <div class="expertOnly">
+    <h2>Réglages du look en cours
+      <button id="storeLive" class="mini accent">garder</button>
+      <button id="clearLive" class="mini">annuler</button>
+    </h2>
+    <div class="panel">
+      <div class="field">
+        <label>Couleur</label>
+        <div id="colorSwatches" class="swatches"></div>
+      </div>
+      <div class="field">
+        <label>Dessin (gobo)</label>
+        <select id="gobo"></select>
+      </div>
+      <div class="field">
+        <label>Mouvement</label>
+        <select id="positionEffect"></select>
+      </div>
+      <div class="field">
+        <label>Clignotement</label>
+        <select id="intensityEffect"></select>
+      </div>
+      <label class="fader"><span>Vitesse <b id="lengthVal">4 temps</b></span>
+        <input id="length" type="range" min="0" max="6" step="1" value="2"></label>
+      <label class="fader"><span>Amplitude du mouvement <b id="sizeVal">60%</b></span>
+        <input id="size" type="range" min="0" max="100" value="60"></label>
+      <label class="fader"><span>Décalage entre les lampes <b id="spreadVal">100%</b></span>
+        <input id="spread" type="range" min="0" max="100" value="100"></label>
+      <label class="fader"><span>Intensité <b id="dimmerVal">100%</b></span>
+        <input id="dimmer" type="range" min="0" max="100" value="100"></label>
+      <label class="fader"><span>Gauche / droite <b id="panVal">50%</b></span>
+        <input id="pan" type="range" min="0" max="100" value="50"></label>
+      <label class="fader"><span>Haut / bas <b id="tiltVal">35%</b></span>
+        <input id="tilt" type="range" min="0" max="100" value="35"></label>
+      <label class="fader"><span>Lenteur des moteurs <b id="speedVal">0%</b></span>
+        <input id="speed" type="range" min="0" max="100" value="0"></label>
+      <label class="check"><input id="prism" type="checkbox"> Prisme</label>
+    </div>
+  </div>
 </section>
 
-<!-- ------------------------------------------------------------------ -->
+<!-- =============================================================== LOOKS -->
 <section id="page-looks" class="page hidden">
-  <p class="hint">Choisis un look, règle-le sur la page Live, puis « enregistrer dans le look ».
-     Ici tu peux le renommer, le dupliquer ou le supprimer.</p>
+  <p class="hint">Un look = un bouton de la page Live. Règle-le sur la page Live avec
+     « garder », ou renomme-le et change sa palette ici. L'énergie sert au pilote
+     automatique : il pioche les looks calmes en Chill et les gros looks en « Ça envoie ».</p>
   <div id="lookEditor" class="list"></div>
-  <button id="addLook" class="mini">+ nouveau look</button>
+  <button id="addLook" class="mini accent">+ nouveau look</button>
 </section>
 
-<!-- ------------------------------------------------------------------ -->
+<!-- =============================================================== SETUP -->
 <section id="page-setup" class="page hidden">
-  <h2>Sortie DMX</h2>
+  <div class="panel simple">
+    <div>
+      <h3>Assistant de démarrage</h3>
+      <p class="hint">Trois questions et tout est réglé : nombre de lampes, adresses
+        à saisir sur chaque BEAM, interface DMX.</p>
+    </div>
+    <button id="openWizard" class="mini accent">lancer l'assistant</button>
+  </div>
+
+  <div class="panel simple">
+    <div>
+      <h3>Mode expert</h3>
+      <p class="hint">Affiche les réglages fins : sliders du look, patch DMX,
+        recherche de canaux, univers brut.</p>
+    </div>
+    <label class="check"><input id="expertToggle" type="checkbox"> activer</label>
+  </div>
+
+  <h2>Interface DMX</h2>
   <div class="panel">
     <div class="field">
-      <label>Interface</label>
+      <label>Type de branchement</label>
       <select id="driver">
-        <option value="dummy">Aucune (simulation)</option>
-        <option value="artnet">Art-Net (réseau / WiFi)</option>
-        <option value="sacn">sACN E1.31 (réseau)</option>
-        <option value="enttec">Enttec DMX USB Pro</option>
-        <option value="opendmx">Open DMX USB (FTDI)</option>
+        <option value="dummy">Aucune — mode simulation</option>
+        <option value="artnet">Boîtier réseau Art-Net</option>
+        <option value="sacn">Boîtier réseau sACN E1.31</option>
+        <option value="enttec">Boîtier USB Enttec DMX USB Pro</option>
+        <option value="opendmx">Boîtier USB Open DMX (FTDI)</option>
       </select>
     </div>
-    <div class="field" id="fieldHost"><label>Adresse IP</label>
-      <input id="host" type="text" placeholder="255.255.255.255"></div>
+    <div class="field" id="fieldHost"><label>Adresse IP du boîtier</label>
+      <input id="host" type="text" placeholder="192.168.1.50"></div>
     <div class="field" id="fieldUniverse"><label>Univers</label>
       <input id="universe" type="number" min="0" max="63" value="0"></div>
     <div class="field" id="fieldPort"><label>Port série</label>
@@ -120,31 +153,98 @@
     <button id="applyOutput" class="mini accent">appliquer</button>
   </div>
 
-  <h2>Patch</h2>
+  <h2>Mes lampes</h2>
   <div id="conflicts" class="alert hidden"></div>
   <div id="patchList" class="list"></div>
   <div class="row">
     <button id="addFixture" class="mini">+ ajouter une lampe</button>
-    <button id="savePatch" class="mini accent">enregistrer le patch</button>
-    <button id="autoAddress" class="mini">ré-adresser à la suite</button>
+    <button id="savePatch" class="mini accent">enregistrer</button>
+    <button id="autoAddress" class="mini">recalculer les adresses</button>
   </div>
 
-  <h2>Trouver les canaux</h2>
-  <p class="hint">Si tes BEAM 100 ne réagissent pas comme prévu, envoie une valeur sur
-     un canal précis et regarde ce qui bouge. Note le résultat, puis corrige le
-     fichier de profil dans <code>beamctl/profiles/</code>.</p>
-  <div class="panel">
-    <div class="field"><label>Canal DMX (1-512)</label>
-      <input id="testChannel" type="number" min="1" max="512" value="1"></div>
-    <label class="fader"><span>Valeur <b id="testVal">0</b></span>
-      <input id="testValue" type="range" min="0" max="255" value="0"></label>
-    <button id="testClear" class="mini">tout relâcher</button>
-    <div id="testInfo" class="hint"></div>
-  </div>
+  <div class="expertOnly">
+    <h2>Trouver les canaux</h2>
+    <p class="hint">Si tes BEAM 100 ne réagissent pas comme prévu, envoie une valeur sur
+       un canal précis et regarde ce qui bouge. Note le résultat, puis corrige le
+       fichier de profil dans <code>beamctl/profiles/</code>.</p>
+    <div class="panel">
+      <div class="field"><label>Canal DMX (1-512)</label>
+        <input id="testChannel" type="number" min="1" max="512" value="1"></div>
+      <label class="fader"><span>Valeur <b id="testVal">0</b></span>
+        <input id="testValue" type="range" min="0" max="255" value="0"></label>
+      <button id="testClear" class="mini">tout relâcher</button>
+      <div id="testInfo" class="hint"></div>
+    </div>
 
-  <h2>Univers DMX (64 premiers canaux)</h2>
-  <div id="dmxView" class="dmx"></div>
+    <h2>Univers DMX (64 premiers canaux)</h2>
+    <div id="dmxView" class="dmx"></div>
+  </div>
 </section>
+
+<!-- ============================================================== MODALS -->
+<div id="wizard" class="overlay hidden">
+  <div class="modal">
+    <div id="wizStep1" class="wizStep">
+      <h3>Combien de lampes BEAM 100 ?</h3>
+      <div class="choices" id="wizCount"></div>
+    </div>
+    <div id="wizStep2" class="wizStep hidden">
+      <h3>Quel mode de canaux ?</h3>
+      <p class="hint">C'est réglé dans le menu de la lampe. En cas de doute, prends
+         14 canaux : c'est le mode complet.</p>
+      <div class="choices">
+        <button class="choice" data-profile="beam100_14ch">14 canaux<small>recommandé</small></button>
+        <button class="choice" data-profile="beam100_11ch">11 canaux<small>mode réduit</small></button>
+      </div>
+    </div>
+    <div id="wizStep3" class="wizStep hidden">
+      <h3>Comment l'ordinateur parle aux lampes ?</h3>
+      <div class="choices">
+        <button class="choice" data-driver="dummy">Rien pour l'instant<small>simulation, sans matériel</small></button>
+        <button class="choice" data-driver="enttec">Boîtier USB Enttec<small>DMX USB Pro</small></button>
+        <button class="choice" data-driver="opendmx">Boîtier USB simple<small>Open DMX / FTDI</small></button>
+        <button class="choice" data-driver="artnet">Boîtier réseau<small>Art-Net, Wi-Fi ou câble</small></button>
+      </div>
+      <div id="wizExtra" class="field hidden">
+        <label id="wizExtraLabel">Détail</label>
+        <input id="wizExtraInput" type="text">
+        <button id="wizExtraOk" class="mini accent">continuer</button>
+      </div>
+    </div>
+    <div id="wizStep4" class="wizStep hidden">
+      <h3>C'est prêt !</h3>
+      <p class="hint">Saisis ces adresses dans le menu DMX de chaque lampe :</p>
+      <div id="wizAddresses" class="addrList"></div>
+      <p id="wizOutput" class="hint"></p>
+      <button id="wizDone" class="mini accent">c'est fait, on joue</button>
+    </div>
+    <button id="wizClose" class="closeX">×</button>
+  </div>
+</div>
+
+<div id="help" class="overlay hidden">
+  <div class="modal">
+    <h3>Comment ça marche</h3>
+    <ol class="hint">
+      <li>Branche l'interface DMX, puis <b>Réglages → assistant de démarrage</b>.</li>
+      <li>Sur la page Live, clique un <b>look</b> : tout le rig change d'un coup.</li>
+      <li>Tape 4 fois sur <b>TAP</b> au rythme du kick, les effets se calent dessus.</li>
+      <li>Pas envie de t'en occuper ? Choisis <b>Chill</b>, <b>Normal</b> ou
+          <b>Ça envoie</b> : le logiciel enchaîne les looks tout seul.</li>
+    </ol>
+    <h3>Raccourcis clavier</h3>
+    <table class="keys">
+      <tr><td><kbd>1</kbd>…<kbd>9</kbd> <kbd>0</kbd></td><td>choisir un look</td></tr>
+      <tr><td><kbd>espace</kbd></td><td>blackout (tout éteindre)</td></tr>
+      <tr><td><kbd>S</kbd> maintenu</td><td>strobe</td></tr>
+      <tr><td><kbd>T</kbd></td><td>tap tempo</td></tr>
+      <tr><td><kbd>R</kbd></td><td>look surprise</td></tr>
+      <tr><td><kbd>A</kbd></td><td>pilote automatique on / off</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>luminosité générale</td></tr>
+    </table>
+    <button id="helpClose" class="mini accent">compris</button>
+  </div>
+</div>
 
 <script src="/app.js"></script>
 </body>

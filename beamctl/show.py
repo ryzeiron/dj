@@ -35,6 +35,7 @@ class Look:
     length: float = 4.0               # beats per effect cycle
     size: float = 0.6
     spread: float = 1.0
+    energy: int = 2                   # 1 = calme, 2 = normal, 3 = gros son
 
     @classmethod
     def from_dict(cls, data: dict) -> "Look":
@@ -49,34 +50,34 @@ def default_looks() -> list[Look]:
     """A usable set of looks so the first gig works straight out of the box."""
     return [
         Look(id="l1", name="Ambiance", color="bleu", dimmer=0.55, tilt=0.4,
-             position_effect="sweep", length=16, size=0.35, speed=0.6),
+             position_effect="sweep", length=16, size=0.35, speed=0.6, energy=1),
         Look(id="l2", name="Couleurs lentes", color_mode="chase", color_beats=8,
              colors=["bleu", "rose", "cyan", "violet"], dimmer=0.7,
-             position_effect="circle", length=16, size=0.4, speed=0.5),
+             position_effect="circle", length=16, size=0.4, speed=0.5, energy=1),
         Look(id="l3", name="Eventail", color="cyan", position_effect="fan",
-             size=0.8, dimmer=0.9, tilt=0.3),
+             size=0.8, dimmer=0.9, tilt=0.3, energy=2),
         Look(id="l4", name="Vague", color="rose", intensity_effect="wave",
-             position_effect="nod", length=4, size=0.8, dimmer=1.0),
+             position_effect="nod", length=4, size=0.8, dimmer=1.0, energy=2),
         Look(id="l5", name="Chenillard", color="rouge", intensity_effect="chase",
-             length=1, position_effect="fan", size=0.7),
+             length=1, position_effect="fan", size=0.7, energy=2),
         Look(id="l6", name="Huit rapide", color="vert", position_effect="figure8",
-             length=4, size=0.7, dimmer=1.0, speed=0.0),
+             length=4, size=0.7, dimmer=1.0, speed=0.0, energy=2),
         Look(id="l7", name="Croisement", color="blanc", position_effect="cross",
-             length=2, size=0.9, dimmer=1.0),
+             length=2, size=0.9, dimmer=1.0, energy=2),
         Look(id="l8", name="Pulsation", color_mode="spread",
              colors=["rouge", "bleu", "vert", "jaune"],
              intensity_effect="pulse", length=1, size=1.0,
-             position_effect="circle", prism=True),
+             position_effect="circle", prism=True, energy=3),
         Look(id="l9", name="Drop", color="blanc", intensity_effect="blinder",
-             length=1, position_effect="random_pos", size=1.0),
+             length=1, position_effect="random_pos", size=1.0, energy=3),
         Look(id="l10", name="Strobe rythme", color="blanc",
              intensity_effect="strobe_beat", length=1, size=1.0,
-             position_effect="none"),
+             position_effect="none", energy=3),
         Look(id="l11", name="Aleatoire", color_mode="random", color_beats=2,
              colors=["rouge", "vert", "bleu", "jaune", "cyan", "rose"],
-             position_effect="random_pos", length=2, size=0.9, dimmer=1.0),
+             position_effect="random_pos", length=2, size=0.9, dimmer=1.0, energy=3),
         Look(id="l12", name="Plein feu", color="blanc", dimmer=1.0,
-             position_effect="none", tilt=0.45),
+             position_effect="none", tilt=0.45, energy=2),
     ]
 
 
@@ -85,6 +86,7 @@ DEFAULT_CONFIG = {
     "fps": 40,
     "beats_per_bar": 4,
     "bpm": 128.0,
+    "wizard_done": False,
 }
 
 
@@ -172,6 +174,28 @@ class Show:
             entry["address"] = max(1, min(512, int(entry.get("address", 1))))
             fixtures.append(self._fixture_from_dict(entry))
         self.fixtures = fixtures
+
+    def auto_patch(self, count: int, profile_id: str) -> list[int]:
+        """Patch `count` identical lamps back to back. Returns their addresses.
+
+        This is what the first-run wizard uses: the DJ says how many lamps they
+        own, and gets the list of addresses to type into each lamp's menu.
+        """
+        profile = self.library.get(profile_id)
+        footprint = profile.footprint if profile else 1
+        entries = []
+        address = 1
+        for index in range(max(1, min(32, int(count)))):
+            entries.append({
+                "id": f"f{index + 1}",
+                "name": f"Beam {index + 1}",
+                "profile_id": profile_id,
+                "address": address,
+                "order": index,
+            })
+            address += footprint
+        self.set_patch(entries)
+        return [fixture.address for fixture in self.sorted_fixtures()]
 
     def patch_conflicts(self) -> list[str]:
         """Overlapping addresses are the classic 'why do they mirror' bug."""

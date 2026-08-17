@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from beamctl.beat import BeatClock
 from beamctl.dmx import Universe
-from beamctl.effects import EffectContext, apply_effect
+from beamctl.effects import EFFECTS, EffectContext, apply_effect
 from beamctl.engine import Engine
 from beamctl.fixtures import Fixture, FixtureState, ProfileLibrary
 from beamctl.output import ArtNetOutput, DummyOutput, SacnOutput
@@ -339,6 +339,81 @@ class TestOutputPackets(unittest.TestCase):
         self.assertEqual(struct.unpack(">H", packet[115:117])[0] & 0x0FFF, 523)
         self.assertEqual(output.host, "239.255.0.1")
         output.close()
+
+
+class TestAutopilot(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+        self.engine = Engine(self.show, output=DummyOutput())
+
+    def test_off_by_default(self):
+        first = self.engine.active_look_id
+        for beats in (0.0, 40.0, 400.0):
+            self.engine._tick_auto(beats)
+        self.assertEqual(self.engine.active_look_id, first)
+
+    def test_changes_look_after_the_right_number_of_bars(self):
+        self.engine.clock.resync()
+        self.engine.set_auto("feu")                 # 4 mesures = 16 temps
+        start = self.engine.active_look_id
+        self.engine._tick_auto(self.engine.clock.beats() + 8)
+        self.assertEqual(self.engine.active_look_id, start)
+        self.engine._tick_auto(self.engine.clock.beats() + 17)
+        self.assertNotEqual(self.engine.active_look_id, start)
+
+    def test_pool_follows_the_mode_energy(self):
+        self.engine.set_auto("doux")
+        self.assertTrue(all(l.energy == 1 for l in self.engine.auto_pool()))
+        self.engine.set_auto("feu")
+        self.assertTrue(all(l.energy in (2, 3) for l in self.engine.auto_pool()))
+
+    def test_unknown_mode_disables(self):
+        self.engine.set_auto("n'importe quoi")
+        self.assertIsNone(self.engine.auto_mode)
+
+    def test_never_picks_the_same_look_twice_in_a_row(self):
+        self.engine.set_auto("normal")
+        seen = []
+        beats = self.engine.clock.beats()
+        for _ in range(12):
+            beats += 33
+            self.engine._tick_auto(beats)
+            seen.append(self.engine.active_look_id)
+        self.assertTrue(all(a != b for a, b in zip(seen, seen[1:])))
+        self.assertGreater(len(set(seen)), 1)
+
+    def test_auto_clears_live_tweaks(self):
+        self.engine.set_live({"color": "rouge"})
+        self.engine.set_auto("feu")
+        self.engine._tick_auto(self.engine.clock.beats() + 100)
+        self.assertEqual(self.engine.live, {})
+
+    def test_surprise_produces_a_playable_look(self):
+        values = self.engine.surprise()
+        self.assertIn(values["position_effect"], EFFECTS)
+        self.assertGreaterEqual(len(values["colors"]), 2)
+        self.engine.render(now=0.0)                 # doit rendre sans exception
+        self.assertEqual(self.engine.current_look().position_effect,
+                         values["position_effect"])
+
+
+class TestWizardPatch(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+
+    def test_addresses_follow_the_footprint(self):
+        addresses = self.show.auto_patch(4, "beam100_14ch")
+        self.assertEqual(addresses, [1, 15, 29, 43])
+        self.assertEqual(self.show.patch_conflicts(), [])
+
+    def test_eleven_channel_mode_packs_tighter(self):
+        self.assertEqual(self.show.auto_patch(3, "beam100_11ch"), [1, 12, 23])
+
+    def test_count_is_clamped(self):
+        self.assertEqual(len(self.show.auto_patch(0, "beam100_14ch")), 1)
+        self.assertEqual(len(self.show.auto_patch(99, "beam100_14ch")), 32)
 
 
 def _pyserial_available() -> bool:

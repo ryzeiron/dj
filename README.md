@@ -5,14 +5,19 @@ n'importe quel ordinateur peut leur parler à condition d'avoir une petite
 interface DMX entre les deux. C'est ce que fait ce logiciel.
 
 Tu lances un programme sur ton portable, tu ouvres une page web (sur le portable
-ou sur ton téléphone), et tu as devant toi des gros boutons de looks, un tap
-tempo, un blackout et un strobe. Les mouvements et les chases sont calés sur le
-BPM, donc les lumières suivent le morceau au lieu de tourner dans le vide.
+ou sur ton téléphone), et tu as devant toi un aperçu animé de tes lampes, des
+gros boutons de looks, un tap tempo, un blackout et un strobe. Les mouvements et
+les chases sont calés sur le BPM, donc les lumières suivent le morceau au lieu
+de tourner dans le vide.
 
+- **Assistant de démarrage** : trois questions au premier lancement et tout est
+  réglé, y compris les adresses à saisir sur chaque lampe.
+- **Pilote automatique** : *Chill*, *Normal* ou *Ça envoie* — le logiciel
+  enchaîne les looks tout seul, en rythme, pendant que tu mixes.
+- **Aperçu à l'écran** : tu vois les faisceaux bouger même sans lampe branchée.
 - Aucune dépendance obligatoire : Python 3.9+ et c'est tout.
 - L'interface web marche depuis le téléphone (même Wi-Fi) : tu peux régler la
   lumière depuis la piste.
-- Mode simulation intégré : tu peux préparer ta soirée dans le train, sans lampe.
 
 ---
 
@@ -50,18 +55,21 @@ python3 -m beamctl            # démarre en mode simulation
 ```
 
 Puis ouvre <http://127.0.0.1:8080>. Le lien pour le téléphone est affiché au
-démarrage.
+démarrage. **L'assistant s'ouvre tout seul au premier lancement** : combien de
+lampes, quel mode de canaux, quelle interface — et il te donne les adresses DMX
+à saisir sur chaque BEAM.
 
 ## 3. Adresser les lampes
 
-Sur chaque BEAM 100, dans le menu du projecteur, règle l'adresse DMX :
+L'assistant fait ce calcul pour toi, mais voici la règle. Sur chaque BEAM 100,
+dans le menu du projecteur, règle l'adresse DMX :
 
 - Beam 1 → adresse **1**
 - Beam 2 → adresse **15** (mode 14 canaux : 1 + 14)
 - Beam 3 → adresse **29**, etc.
 
 Mets les deux lampes dans le **même mode de canaux** (14 canaux de préférence),
-et déclare le même mode dans l'onglet **Config → Patch**. Le logiciel prévient
+et déclare le même mode dans l'onglet **Réglages → Mes lampes**. Le logiciel prévient
 si deux lampes se chevauchent.
 
 ## 4. Lancer pour de vrai
@@ -76,7 +84,7 @@ python3 -m beamctl --output enttec --serial-port /dev/ttyUSB0
 python3 -m beamctl --output opendmx --serial-port COM3        # Windows
 ```
 
-L'interface est aussi réglable dans l'onglet **Config**, sans relancer.
+L'interface est aussi réglable dans l'onglet **Réglages**, sans relancer.
 
 Options utiles : `--port 8080` (port web), `--bind 127.0.0.1` (n'écouter que
 l'ordinateur), `--token moncode` (exige `?t=moncode` dans l'URL — pense-y si tu
@@ -89,12 +97,30 @@ es sur le Wi-Fi ouvert du lieu), `--show masoiree.json` (plusieurs configs).
 - 12 **looks** : un clic, tout le rig change. Touches `1`–`9` et `0`.
 - **TAP** (touche `T`) : tape 4 fois sur le kick, tout se cale dessus.
   `SYNC` recale le premier temps sur le drop.
-- **BLACKOUT** (barre espace), **STROBE** (maintenir `S`), **FREEZE** (`F`).
-- **Master** : l'intensité générale.
-- Les réglages en direct (couleur, gobo, mouvement, amplitude, vitesse, pan,
-  tilt) modifient le look en cours ; *enregistrer dans le look* les garde.
+- **BLACKOUT** (barre espace), **STROBE** (maintenir `S`).
+- **Luminosité** : l'intensité générale (`↑` / `↓`).
+- **🎲 Surprise** (touche `R`) : invente un look à la volée. Si tu l'aimes,
+  *garder* l'enregistre dans le look en cours.
 
-**Réglages d'un look**
+**Pilote automatique** — le bouton à connaître quand tu mixes seul :
+
+| Mode | Ce qu'il fait |
+|---|---|
+| Je pilote | rien d'automatique, c'est toi qui cliques |
+| Chill | change de look toutes les 16 mesures, parmi les looks calmes |
+| Normal | toutes les 8 mesures, looks calmes et moyens |
+| Ça envoie | toutes les 4 mesures, looks énergiques |
+
+Les changements tombent sur une mesure, donc toujours en musique. Tu peux
+reprendre la main à tout moment en cliquant un look (touche `A` pour basculer).
+
+**Mode simple / mode expert**
+
+Par défaut l'interface reste minimale. *Réglages → mode expert* fait apparaître
+les sliders fins du look, le patch DMX détaillé, la recherche de canaux et
+l'univers brut.
+
+**Réglages d'un look** (mode expert)
 
 | Réglage | Effet |
 |---|---|
@@ -104,6 +130,7 @@ es sur le Wi-Fi ouvert du lieu), `--show masoiree.json` (plusieurs configs).
 | Amplitude | à quel point les têtes bougent |
 | Décalage | déphasage entre les lampes (0 = toutes ensemble) |
 | Mode couleur | fixe, défilement, une couleur par lampe, aléatoire |
+| Énergie | calme / normal / gros son — sert au pilote automatique |
 
 En quittant avec Ctrl+C, le logiciel envoie une trame noire : les lampes
 s'éteignent proprement.
@@ -115,7 +142,7 @@ varient. Les profils fournis (`beamctl/profiles/beam100_14ch.json` et
 `beam100_11ch.json`) correspondent au mapping le plus répandu, mais **vérifie le
 tien** :
 
-1. Onglet **Config → Trouver les canaux**.
+1. Onglet **Réglages → mode expert → Trouver les canaux**.
 2. Choisis un canal, monte la valeur, regarde ce qui se passe sur la lampe.
 3. Note à quoi sert chaque canal, puis corrige le fichier JSON du profil.
 
@@ -135,7 +162,7 @@ Symptômes courants :
   DMX, ou pas de terminaison.
 - **Les deux lampes font exactement pareil** : elles ont la même adresse.
 - **Pan et tilt inversés** entre les deux lampes : coche *inverser pan* dans le
-  patch pour celle qui est en face.
+  patch pour celle qui est en face (mode expert).
 
 ## 7. Organisation du code
 
@@ -149,7 +176,7 @@ Symptômes courants :
 | `beamctl/engine.py` | boucle de rendu 40 images/seconde |
 | `beamctl/show.py` | patch, looks, sauvegarde `show.json` |
 | `beamctl/server.py` | serveur HTTP + API JSON |
-| `beamctl/web/` | interface (HTML/CSS/JS, sans framework) |
+| `beamctl/web/` | interface : aperçu canvas, assistant, looks (sans framework) |
 
 Ta configuration est enregistrée dans `show.json` (avec une copie `.bak`) :
 sauvegarde-le, c'est toute ta soirée.

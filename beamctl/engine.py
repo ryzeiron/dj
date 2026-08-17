@@ -9,7 +9,7 @@ from dataclasses import asdict
 from .beat import BeatClock
 from .dmx import Universe
 from .effects import EffectContext, apply_effect
-from .fixtures import FixtureState
+from .fixtures import COLOR_RGB, FixtureState
 from .output import Output, create_output, DummyOutput
 from .show import Look, Show
 
@@ -30,6 +30,10 @@ class Engine:
         self.strobe_momentary = False
         self.strobe_rate = 15.0
         self.freeze = False
+
+        self.auto_mode: str | None = None       # None | doux | normal | feu
+        self._auto_next_bar: float = 0.0
+        self._auto_seed = 1
 
         self.active_look_id: str | None = show.looks[0].id if show.looks else None
         self.live: dict = {}                    # temporary overrides from the UI
@@ -163,11 +167,47 @@ class Engine:
         apply_effect(look.intensity_effect, states, ctx)
         return states
 
+    # -- autopilot ---------------------------------------------------------
+    #: how many bars a look is held, per mode
+    AUTO_BARS = {"doux": 16, "normal": 8, "feu": 4}
+    #: which energies a mode is allowed to pick from
+    AUTO_ENERGIES = {"doux": (1,), "normal": (1, 2), "feu": (2, 3)}
+
+    def set_auto(self, mode: str | None, now: float | None = None) -> None:
+        """Hands-free mode: the software changes look on its own, in time."""
+        with self._lock:
+            self.auto_mode = mode if mode in self.AUTO_BARS else None
+            if self.auto_mode:
+                bar = self.clock.beats(now) / max(1, self.beats_per_bar)
+                self._auto_next_bar = bar + self.AUTO_BARS[self.auto_mode]
+
+    def auto_pool(self) -> list[Look]:
+        energies = self.AUTO_ENERGIES.get(self.auto_mode or "", ())
+        pool = [l for l in self.show.looks if int(getattr(l, "energy", 2)) in energies]
+        return pool or list(self.show.looks)
+
+    def _tick_auto(self, beats: float) -> None:
+        if not self.auto_mode:
+            return
+        bar = beats / max(1, self.beats_per_bar)
+        if bar < self._auto_next_bar:
+            return
+        pool = self.auto_pool()
+        if not pool:
+            return
+        candidates = [l for l in pool if l.id != self.active_look_id] or pool
+        self._auto_seed = (self._auto_seed * 1103515245 + 12345) & 0x7FFFFFFF
+        chosen = candidates[(self._auto_seed >> 8) % len(candidates)]
+        self.active_look_id = chosen.id
+        self.live = {}
+        self._auto_next_bar = bar + self.AUTO_BARS[self.auto_mode]
+
     # -- rendering ---------------------------------------------------------
     def render(self, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
         with self._lock:
             beats = self.clock.beats(now)
+            self._tick_auto(beats)
             fixtures = self.show.sorted_fixtures()
 
             if self.freeze and self._frozen:
@@ -235,6 +275,34 @@ class Engine:
             self.live = {}
             return stored
 
+    def surprise(self) -> dict:
+        """Roll a new look on top of the current one. Pure fun button."""
+        import random
+
+        from .effects import EFFECTS
+
+        positions = [k for k, v in EFFECTS.items() if v["kind"] == "position"]
+        intensities = [k for k, v in EFFECTS.items() if v["kind"] == "intensity"]
+        palette = list(COLOR_RGB)
+        profile = next((f.profile for f in self.show.sorted_fixtures() if f.profile), None)
+        if profile and profile.colors:
+            palette = profile.colors
+
+        values = {
+            "position_effect": random.choice(positions),
+            "intensity_effect": random.choice(intensities + ["none", "none"]),
+            "color_mode": random.choice(["static", "chase", "spread", "random"]),
+            "color": random.choice(palette),
+            "colors": random.sample(palette, min(len(palette), random.randint(2, 4))),
+            "length": random.choice([1, 2, 4, 4, 8, 16]),
+            "size": round(random.uniform(0.4, 1.0), 2),
+            "spread": round(random.uniform(0.0, 1.0), 2),
+            "tilt": round(random.uniform(0.2, 0.6), 2),
+            "dimmer": 1.0,
+        }
+        self.set_live(values)
+        return values
+
     def set_channel_override(self, address: int, value: int | None) -> None:
         with self._lock:
             if value is None:
@@ -264,6 +332,7 @@ class Engine:
                 "strobe": self.strobe_momentary,
                 "freeze": self.freeze,
                 "solo": self.solo_fixture,
+                "auto": self.auto_mode,
                 "output": self.output.describe(),
                 "output_error": self.output_error,
                 "frames": self.frames,
