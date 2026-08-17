@@ -1,0 +1,41 @@
+{
+  "id": "beam100_14ch",
+  "name": "BEAM 100 — mode 14 canaux",
+  "footprint": 14,
+  "note": "Table de canaux la plus courante des tetes BEAM 100 / mini beam 100W. Verifie avec l'outil 'Trouver les canaux' et corrige ce fichier si besoin.",
+  "pan": {"coarse": 1, "fine": 2, "range_deg": 540},
+  "tilt": {"coarse": 3, "fine": 4, "range_deg": 270},
+  "speed": {"channel": 5, "invert": true},
+  "dimmer": {"channel": 6, "min": 0, "max": 255},
+  "shutter": {"channel": 7, "closed": 0, "open": 255, "strobe_min": 8, "strobe_max": 215, "strobe_hz_max": 20},
+  "color": {
+    "channel": 8,
+    "slots": {
+      "blanc": 0,
+      "rouge": 14,
+      "vert": 28,
+      "bleu": 42,
+      "jaune": 56,
+      "orange": 70,
+      "cyan": 84,
+      "rose": 98,
+      "arc-en-ciel": 200
+    }
+  },
+  "gobo": {
+    "channel": 9,
+    "slots": {
+      "ouvert": 0,
+      "gobo 1": 8,
+      "gobo 2": 16,
+      "gobo 3": 24,
+      "gobo 4": 32,
+      "gobo 5": 40,
+      "gobo 6": 48,
+      "gobo 7": 56
+    }
+  },
+  "prism": {"channel": 10, "off": 0, "on": 200},
+  "prism_rot": {"channel": 11},
+  "focus": {"channel": 13}
+}

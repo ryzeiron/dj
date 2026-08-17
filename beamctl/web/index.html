@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>beamctl — BEAM 100</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%2329d3c2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">beamctl<span id="outputName"></span></div>
+  <nav class="tabs">
+    <button class="tab active" data-page="live">Live</button>
+    <button class="tab" data-page="looks">Looks</button>
+    <button class="tab" data-page="setup">Config</button>
+  </nav>
+  <div id="alert" class="alert hidden"></div>
+</header>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="page-live" class="page">
+
+  <div class="masters">
+    <button id="blackout" class="big danger">BLACKOUT<small>espace</small></button>
+    <button id="strobe" class="big warn">STROBE<small>maintenir · S</small></button>
+    <button id="freeze" class="big">FREEZE<small>F</small></button>
+    <div class="tempo">
+      <button id="tap" class="big accent">TAP<small>T</small></button>
+      <div class="tempoInfo">
+        <div id="bpm" class="bpm">128.0</div>
+        <div class="beatDots"><i></i><i></i><i></i><i></i></div>
+        <div class="row">
+          <button class="mini" data-nudge="-1">−1</button>
+          <button class="mini" id="resync">SYNC</button>
+          <button class="mini" data-nudge="1">+1</button>
+        </div>
+      </div>
+    </div>
+    <label class="fader">
+      <span>Master <b id="masterVal">100%</b></span>
+      <input id="master" type="range" min="0" max="100" value="100">
+    </label>
+  </div>
+
+  <h2>Looks</h2>
+  <div id="lookGrid" class="grid looks"></div>
+
+  <h2>Réglages en direct <button id="storeLive" class="mini">enregistrer dans le look</button>
+    <button id="clearLive" class="mini">annuler</button></h2>
+
+  <div class="panel">
+    <div class="field">
+      <label>Couleur</label>
+      <div id="colorSwatches" class="swatches"></div>
+    </div>
+    <div class="field">
+      <label>Gobo</label>
+      <select id="gobo"></select>
+    </div>
+    <div class="field">
+      <label>Mouvement</label>
+      <select id="positionEffect"></select>
+    </div>
+    <div class="field">
+      <label>Intensité</label>
+      <select id="intensityEffect"></select>
+    </div>
+    <label class="fader"><span>Vitesse <b id="lengthVal">4 temps</b></span>
+      <input id="length" type="range" min="0" max="6" step="1" value="2"></label>
+    <label class="fader"><span>Amplitude <b id="sizeVal">60%</b></span>
+      <input id="size" type="range" min="0" max="100" value="60"></label>
+    <label class="fader"><span>Décalage <b id="spreadVal">100%</b></span>
+      <input id="spread" type="range" min="0" max="100" value="100"></label>
+    <label class="fader"><span>Intensité <b id="dimmerVal">100%</b></span>
+      <input id="dimmer" type="range" min="0" max="100" value="100"></label>
+    <label class="fader"><span>Pan <b id="panVal">50%</b></span>
+      <input id="pan" type="range" min="0" max="100" value="50"></label>
+    <label class="fader"><span>Tilt <b id="tiltVal">35%</b></span>
+      <input id="tilt" type="range" min="0" max="100" value="35"></label>
+    <label class="fader"><span>Lenteur mvt <b id="speedVal">0%</b></span>
+      <input id="speed" type="range" min="0" max="100" value="0"></label>
+    <label class="check"><input id="prism" type="checkbox"> Prisme</label>
+  </div>
+
+  <h2>Rig</h2>
+  <div id="rig" class="rig"></div>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="page-looks" class="page hidden">
+  <p class="hint">Choisis un look, règle-le sur la page Live, puis « enregistrer dans le look ».
+     Ici tu peux le renommer, le dupliquer ou le supprimer.</p>
+  <div id="lookEditor" class="list"></div>
+  <button id="addLook" class="mini">+ nouveau look</button>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="page-setup" class="page hidden">
+  <h2>Sortie DMX</h2>
+  <div class="panel">
+    <div class="field">
+      <label>Interface</label>
+      <select id="driver">
+        <option value="dummy">Aucune (simulation)</option>
+        <option value="artnet">Art-Net (réseau / WiFi)</option>
+        <option value="sacn">sACN E1.31 (réseau)</option>
+        <option value="enttec">Enttec DMX USB Pro</option>
+        <option value="opendmx">Open DMX USB (FTDI)</option>
+      </select>
+    </div>
+    <div class="field" id="fieldHost"><label>Adresse IP</label>
+      <input id="host" type="text" placeholder="255.255.255.255"></div>
+    <div class="field" id="fieldUniverse"><label>Univers</label>
+      <input id="universe" type="number" min="0" max="63" value="0"></div>
+    <div class="field" id="fieldPort"><label>Port série</label>
+      <input id="serialPort" type="text" placeholder="/dev/ttyUSB0 ou COM3"></div>
+    <button id="applyOutput" class="mini accent">appliquer</button>
+  </div>
+
+  <h2>Patch</h2>
+  <div id="conflicts" class="alert hidden"></div>
+  <div id="patchList" class="list"></div>
+  <div class="row">
+    <button id="addFixture" class="mini">+ ajouter une lampe</button>
+    <button id="savePatch" class="mini accent">enregistrer le patch</button>
+    <button id="autoAddress" class="mini">ré-adresser à la suite</button>
+  </div>
+
+  <h2>Trouver les canaux</h2>
+  <p class="hint">Si tes BEAM 100 ne réagissent pas comme prévu, envoie une valeur sur
+     un canal précis et regarde ce qui bouge. Note le résultat, puis corrige le
+     fichier de profil dans <code>beamctl/profiles/</code>.</p>
+  <div class="panel">
+    <div class="field"><label>Canal DMX (1-512)</label>
+      <input id="testChannel" type="number" min="1" max="512" value="1"></div>
+    <label class="fader"><span>Valeur <b id="testVal">0</b></span>
+      <input id="testValue" type="range" min="0" max="255" value="0"></label>
+    <button id="testClear" class="mini">tout relâcher</button>
+    <div id="testInfo" class="hint"></div>
+  </div>
+
+  <h2>Univers DMX (64 premiers canaux)</h2>
+  <div id="dmxView" class="dmx"></div>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

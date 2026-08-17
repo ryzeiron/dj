@@ -1,0 +1,19 @@
+{
+  "id": "par_rgbw_4ch",
+  "name": "PAR LED RGBW — 4 canaux",
+  "footprint": 4,
+  "note": "Profil d'appoint pour completer les beams avec des pars RGBW (R, V, B, W en direct). Le dimmer est applique en mettant les couleurs a l'echelle.",
+  "rgb": {"r": 1, "g": 2, "b": 3, "w": 4},
+  "color": {
+    "slots": {
+      "blanc": 0,
+      "rouge": 0,
+      "vert": 0,
+      "bleu": 0,
+      "jaune": 0,
+      "orange": 0,
+      "cyan": 0,
+      "rose": 0
+    }
+  }
+}

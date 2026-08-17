@@ -1,0 +1,4 @@
+# beamctl fonctionne sans aucune dependance (Art-Net, sACN, simulation).
+# pyserial n'est necessaire que pour les interfaces USB-DMX :
+#   Enttec DMX USB Pro (--output enttec) et Open DMX USB (--output opendmx).
+pyserial>=3.5

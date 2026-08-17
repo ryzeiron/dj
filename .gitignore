@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+show.json
+show.json.bak
+show.json.tmp
+.venv/
