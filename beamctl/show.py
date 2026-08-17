@@ -35,6 +35,7 @@ class Look:
     length: float = 4.0               # beats per effect cycle
     size: float = 0.6
     spread: float = 1.0
+    path: list = field(default_factory=list)   # points du trace perso, en 0..1
     energy: int = 2                   # 1 = calme, 2 = normal, 3 = gros son
 
     @classmethod

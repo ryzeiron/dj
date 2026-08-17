@@ -380,3 +380,58 @@ kbd {
   background: var(--panel2); border: 1px solid var(--line);
   border-radius: 5px; padding: 1px 6px; font-size: 12px;
 }
+
+/* outils de l'apercu --------------------------------------------------- */
+.stageTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.growSpace { flex: 1; }
+.tool {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  touch-action: manipulation;
+}
+.tool small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.tool.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tool.on small { color: var(--accent); opacity: .75; }
+.stage.editing { cursor: crosshair; touch-action: none; }
+
+/* couleurs a points ---------------------------------------------------- */
+.colorPanel .swatches { gap: 8px; }
+.cmode {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cmode.on { border-color: var(--accent); color: var(--accent); }
+.swatch.chip { border-radius: 50%; position: relative; }
+.swatch.chip::after {
+  content: "×";
+  position: absolute;
+  top: -6px; right: -5px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+}

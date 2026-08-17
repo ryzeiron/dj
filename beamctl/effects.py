@@ -138,6 +138,48 @@ def _blinder(states, ctx):
         state.dimmer = 1.0 if on else 0.0
 
 
+def sample_path(points: list, t: float) -> tuple[float, float]:
+    """Position at 0..1 along a closed curve passing through `points`.
+
+    Catmull-Rom, so a handful of dropped points give a smooth loop instead of a
+    polygon with corners. Mirrored in the browser to draw the same curve.
+    """
+    count = len(points)
+    if count == 0:
+        return 0.5, 0.5
+    if count == 1:
+        return points[0][0], points[0][1]
+    position = (t % 1.0) * count
+    index = int(position)
+    frac = position - index
+
+    def point(i):
+        return points[i % count]
+
+    p0, p1, p2, p3 = point(index - 1), point(index), point(index + 1), point(index + 2)
+
+    def axis(a, b, c, d):
+        return 0.5 * ((2 * b) + (-a + c) * frac
+                      + (2 * a - 5 * b + 4 * c - d) * frac ** 2
+                      + (-a + 3 * b - 3 * c + d) * frac ** 3)
+
+    return axis(p0[0], p1[0], p2[0], p3[0]), axis(p0[1], p1[1], p2[1], p3[1])
+
+
+def _path(states, ctx):
+    """Follow the curve the user drew on the preview, in time with the beat."""
+    points = [p for p in (ctx.params.get("path") or []) if len(p) >= 2]
+    if len(points) < 2:
+        return
+    centre_x = sum(p[0] for p in points) / len(points)
+    centre_y = sum(p[1] for p in points) / len(points)
+    scale = max(0.0, min(1.0, ctx.size)) * 2      # size 0.5 = trace exact
+    for i, state in enumerate(states):
+        x, y = sample_path(points, ctx.phase(i, len(states)))
+        state.pan = centre_x + (x - centre_x) * scale
+        state.tilt = centre_y + (y - centre_y) * scale
+
+
 def _random_pos(states, ctx):
     """New random position for each head at every step."""
     amp = _amp(ctx)
@@ -156,6 +198,7 @@ EFFECTS: dict[str, dict] = {
     "fan": {"label": "Eventail", "fn": _fan, "kind": "position"},
     "cross": {"label": "Croisement", "fn": _cross, "kind": "position"},
     "random_pos": {"label": "Positions aleatoires", "fn": _random_pos, "kind": "position"},
+    "path": {"label": "Trace perso", "fn": _path, "kind": "position"},
     "chase": {"label": "Chenillard", "fn": _chase, "kind": "intensity"},
     "pulse": {"label": "Pulsation", "fn": _pulse, "kind": "intensity"},
     "wave": {"label": "Vague", "fn": _wave, "kind": "intensity"},

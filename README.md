@@ -14,7 +14,8 @@ de tourner dans le vide.
   réglé, y compris les adresses à saisir sur chaque lampe.
 - **Pilote automatique** : *Chill*, *Normal* ou *Ça envoie* — le logiciel
   enchaîne les looks tout seul, en rythme, pendant que tu mixes.
-- **Aperçu à l'écran** : tu vois les faisceaux bouger même sans lampe branchée.
+- **Aperçu à l'écran** : tu vois les faisceaux bouger même sans lampe branchée,
+  et tu peux viser ou dessiner la trajectoire directement dessus, au doigt.
 - Aucune dépendance obligatoire : Python 3.9+ et c'est tout.
 - L'interface web marche depuis le téléphone (même Wi-Fi) : tu peux régler la
   lumière depuis la piste.
@@ -102,6 +103,32 @@ es sur le Wi-Fi ouvert du lieu), `--show masoiree.json` (plusieurs configs).
 - **🎲 Surprise** (touche `R`) : invente un look à la volée. Si tu l'aimes,
   *garder* l'enregistre dans le look en cours.
 
+**Piloter à la main, avec des points**
+
+Trois outils au-dessus de l'aperçu :
+
+| Outil | Ce que tu fais |
+|---|---|
+| 👁 Regarder | rien, tu observes |
+| 🎯 Viser | tu glisses sur l'aperçu, les lampes suivent ton doigt |
+| ✏️ Tracé | tu poses des points, les têtes tournent en boucle sur la courbe qui les relie |
+
+Le tracé est une vraie trajectoire : les points sont reliés par une courbe
+lisse et fermée, parcourue en rythme (la durée d'un tour est réglée par
+*Vitesse*, l'*Amplitude* rétrécit ou agrandit la figure autour de son centre, et
+le *Décalage* échelonne les lampes le long de la courbe). Glisse un point pour
+déformer la figure en direct, `↩ dernier point` retire le dernier, `effacer le
+tracé` revient aux mouvements préréglés. `garder dans le look` enregistre tout.
+
+**Couleurs à points**
+
+Tes BEAM 100 ont une roue de couleurs, donc un nombre fixe de teintes : chaque
+point affiché est une de ces couleurs. Tu choisis d'abord comment elles
+changent — *une seule*, *défilement*, *une par lampe*, *au hasard* — puis tu
+cliques les couleurs pour construire ta palette, dans l'ordre. Un clic sur un
+point de la palette l'enlève. Le curseur règle tous les combien de temps la
+couleur change.
+
 **Pilote automatique** — le bouton à connaître quand tu mixes seul :
 
 | Mode | Ce qu'il fait |
@@ -124,7 +151,7 @@ l'univers brut.
 
 | Réglage | Effet |
 |---|---|
-| Mouvement | balayage, cercle, huit, éventail, croisement, positions aléatoires |
+| Mouvement | balayage, cercle, huit, éventail, croisement, aléatoire, tracé perso |
 | Intensité | chenillard, pulsation, vague, blinder, strobe rythmé |
 | Vitesse | durée d'un cycle en temps (0,5 → 32) — c'est ça qui suit le BPM |
 | Amplitude | à quel point les têtes bougent |

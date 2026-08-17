@@ -28,6 +28,17 @@
     <canvas id="stage" class="stage"></canvas>
     <div id="stageBadge" class="stageBadge">Ambiance</div>
   </div>
+  <div class="stageTools">
+    <button class="tool" data-tool="none">👁 Regarder<small>ne rien toucher</small></button>
+    <button class="tool" data-tool="aim">🎯 Viser<small>glisse le point</small></button>
+    <button class="tool" data-tool="path">✏️ Tracé<small>pose des points, ça tourne dessus</small></button>
+    <button id="pathUndo" class="mini">↩ dernier point</button>
+    <button id="pathClear" class="mini danger">effacer le tracé</button>
+    <span id="stageHint" class="tip"></span>
+    <span class="growSpace"></span>
+    <button id="storeLive" class="mini accent">garder dans le look</button>
+    <button id="clearLive" class="mini">annuler</button>
+  </div>
 
   <div class="masters">
     <button id="blackout" class="big danger">BLACKOUT<small>espace</small></button>
@@ -62,16 +73,32 @@
   <h2>Looks <span class="tip">clique, ou tape le chiffre au clavier</span></h2>
   <div id="lookGrid" class="grid looks"></div>
 
-  <div class="expertOnly">
-    <h2>Réglages du look en cours
-      <button id="storeLive" class="mini accent">garder</button>
-      <button id="clearLive" class="mini">annuler</button>
-    </h2>
-    <div class="panel">
-      <div class="field">
-        <label>Couleur</label>
-        <div id="colorSwatches" class="swatches"></div>
+  <h2>Couleurs <span class="tip">chaque point est une couleur de la roue de tes lampes</span></h2>
+  <div class="panel colorPanel">
+    <div class="field">
+      <label>Comment les couleurs changent</label>
+      <div class="row">
+        <button class="cmode" data-cmode="static">une seule</button>
+        <button class="cmode" data-cmode="chase">défilement</button>
+        <button class="cmode" data-cmode="spread">une par lampe</button>
+        <button class="cmode" data-cmode="random">au hasard</button>
       </div>
+    </div>
+    <div class="field">
+      <label id="colorPointsLabel">Couleurs disponibles</label>
+      <div id="colorPoints" class="swatches"></div>
+    </div>
+    <div class="field" id="paletteBox">
+      <label>Ma palette <span class="tip">clique un point pour l'enlever</span></label>
+      <div id="paletteChips" class="swatches"></div>
+    </div>
+    <label class="fader" id="colorSpeedBox"><span>Changement toutes les <b id="colorBeatsVal">4 temps</b></span>
+      <input id="colorBeats" type="range" min="0" max="6" step="1" value="3"></label>
+  </div>
+
+  <div class="expertOnly">
+    <h2>Réglages fins du look</h2>
+    <div class="panel">
       <div class="field">
         <label>Dessin (gobo)</label>
         <select id="gobo"></select>
@@ -231,6 +258,11 @@
       <li>Tape 4 fois sur <b>TAP</b> au rythme du kick, les effets se calent dessus.</li>
       <li>Pas envie de t'en occuper ? Choisis <b>Chill</b>, <b>Normal</b> ou
           <b>Ça envoie</b> : le logiciel enchaîne les looks tout seul.</li>
+      <li><b>🎯 Viser</b> : glisse ton doigt sur l'aperçu, les lampes suivent.</li>
+      <li><b>✏️ Tracé</b> : pose des points sur l'aperçu, les têtes tournent en
+          boucle sur la courbe qui les relie — glisse un point pour la déformer.</li>
+      <li><b>Couleurs</b> : chaque point est une couleur de la roue de tes lampes.
+          Clique pour l'ajouter à la palette, reclique le point pour l'enlever.</li>
     </ol>
     <h3>Raccourcis clavier</h3>
     <table class="keys">

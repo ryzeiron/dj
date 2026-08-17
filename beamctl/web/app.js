@@ -17,6 +17,13 @@ let status = null;    // etat courant du moteur
 let touching = false; // un fader est en cours de manipulation
 let smooth = [];      // etats lisses pour l'animation
 let expert = localStorage.getItem("beamctl.expert") === "1";
+let tool = "none";        // none | aim | path
+let pathPoints = [];      // points du trace, en coordonnees look (0..1)
+let dragIndex = -1;       // point en cours de deplacement
+
+const STAGE_TOP = 0.42;   // le sol commence a 42 % de la hauteur
+const STAGE_SPAN = 0.55;
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 /* ------------------------------------------------------------------ api */
 async function api(path, body) {
@@ -58,6 +65,29 @@ function rgbOf(name, time) {
 function cssColor(name, alpha, time) {
   const [r, g, b] = rgbOf(name, time);
   return alpha === undefined ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`;
+}
+
+/* --------------------------------------------------- geometrie du trace */
+function samplePath(points, t) {
+  const count = points.length;
+  if (!count) return [0.5, 0.5];
+  if (count === 1) return points[0];
+  const position = (((t % 1) + 1) % 1) * count;
+  const index = Math.floor(position);
+  const frac = position - index;
+  const at = (k) => points[((k % count) + count) % count];
+  const [a, b, c, d] = [at(index - 1), at(index), at(index + 1), at(index + 2)];
+  const axis = (p, q, r, s) => 0.5 * ((2 * q) + (-p + r) * frac
+    + (2 * p - 5 * q + 4 * r - s) * frac * frac
+    + (-p + 3 * q - 3 * r + s) * frac * frac * frac);
+  return [axis(a[0], b[0], c[0], d[0]), axis(a[1], b[1], c[1], d[1])];
+}
+
+function toStage(pan, tilt, width, height) {
+  return [pan * width, height * STAGE_TOP + tilt * height * STAGE_SPAN];
+}
+function fromStage(x, y, width, height) {
+  return [clamp01(x / width), clamp01((y - height * STAGE_TOP) / (height * STAGE_SPAN))];
 }
 
 /* ------------------------------------------------------- apercu scenique */
@@ -143,8 +173,56 @@ function drawStage(timestamp) {
     context.fill();
   });
 
-  // tetes
   context.globalCompositeOperation = "source-over";
+
+  // trace perso : la courbe et ses points
+  const look = currentLook();
+  if (pathPoints.length && (tool === "path" || look.position_effect === "path")) {
+    context.strokeStyle = "rgba(41, 211, 194, .85)";
+    context.lineWidth = 2;
+    context.setLineDash([6, 5]);
+    context.beginPath();
+    for (let i = 0; i <= 160; i++) {
+      const [px, py] = samplePath(pathPoints, i / 160);
+      const [x, y] = toStage(px, py, width, height);
+      i ? context.lineTo(x, y) : context.moveTo(x, y);
+    }
+    context.closePath();
+    context.stroke();
+    context.setLineDash([]);
+
+    pathPoints.forEach((point, index) => {
+      const [x, y] = toStage(point[0], point[1], width, height);
+      context.beginPath();
+      context.arc(x, y, index === dragIndex ? 13 : 10, 0, Math.PI * 2);
+      context.fillStyle = index === dragIndex ? "#29d3c2" : "rgba(21, 25, 34, .92)";
+      context.fill();
+      context.strokeStyle = "#29d3c2";
+      context.lineWidth = 2;
+      context.stroke();
+      context.fillStyle = index === dragIndex ? "#04211e" : "#e8ecf5";
+      context.font = "600 11px system-ui, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(String(index + 1), x, y);
+    });
+  }
+
+  // point de visee
+  if (tool === "aim") {
+    const [x, y] = toStage(look.pan ?? 0.5, look.tilt ?? 0.35, width, height);
+    context.strokeStyle = "#29d3c2";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(x, y, 16, 0, Math.PI * 2);
+    context.moveTo(x - 24, y); context.lineTo(x - 6, y);
+    context.moveTo(x + 6, y); context.lineTo(x + 24, y);
+    context.moveTo(x, y - 24); context.lineTo(x, y - 6);
+    context.moveTo(x, y + 6); context.lineTo(x, y + 24);
+    context.stroke();
+  }
+
+  // tetes
   smooth.forEach((state, index) => {
     const headX = width * (index + 0.5) / count;
     context.fillStyle = "#2a3040";
@@ -216,23 +294,83 @@ function renderLiveOptions() {
   fillSelect($("gobo"), (profile.gobos || ["ouvert"]).map((g) => ({ value: g, label: g })),
     currentLook().gobo || "ouvert");
 
-  const swatches = $("colorSwatches");
-  swatches.innerHTML = "";
-  const colors = profile.colors && profile.colors.length ? profile.colors : (show.colors || []);
-  colors.forEach((name) => {
-    const swatch = document.createElement("button");
-    swatch.className = "swatch";
-    swatch.title = name;
-    swatch.dataset.color = name;
-    swatch.style.background = name === "arc-en-ciel"
-      ? "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"
-      : cssColor(name, 1, 0);
+}
+
+function swatchButton(name) {
+  const swatch = document.createElement("button");
+  swatch.className = "swatch";
+  swatch.title = name;
+  swatch.dataset.color = name;
+  swatch.style.background = name === "arc-en-ciel"
+    ? "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f)"
+    : cssColor(name, 1, 0);
+  return swatch;
+}
+
+function availableColors() {
+  const profile = mainProfile() || {};
+  return profile.colors && profile.colors.length ? profile.colors : (show.colors || []);
+}
+
+function renderColors() {
+  const look = currentLook();
+  const mode = look.color_mode || "static";
+  const palette = (look.colors || []).filter(Boolean);
+
+  document.querySelectorAll("[data-cmode]").forEach((button) =>
+    button.classList.toggle("on", button.dataset.cmode === mode));
+  $("colorPointsLabel").textContent = mode === "static"
+    ? "Couleurs disponibles — clique pour choisir"
+    : "Couleurs disponibles — clique pour ajouter à la palette";
+  $("paletteBox").classList.toggle("hidden", mode === "static");
+  $("colorSpeedBox").classList.toggle("hidden", mode === "static" || mode === "spread");
+
+  const points = $("colorPoints");
+  points.innerHTML = "";
+  availableColors().forEach((name) => {
+    const swatch = swatchButton(name);
+    if (mode === "static" && name === look.color) swatch.classList.add("on");
     swatch.onclick = () => {
-      setLive({ color: name, color_mode: "static" });
-      [...swatches.children].forEach((c) => c.classList.toggle("on", c === swatch));
+      if (mode === "static") {
+        setLive({ color: name, color_mode: "static" });
+      } else {
+        setLive({ colors: palette.concat([name]) });
+      }
+      renderColorsSoon();
     };
-    swatches.appendChild(swatch);
+    points.appendChild(swatch);
   });
+
+  const chips = $("paletteChips");
+  chips.innerHTML = "";
+  if (mode !== "static") {
+    palette.forEach((name, index) => {
+      const swatch = swatchButton(name);
+      swatch.classList.add("chip");
+      swatch.onclick = () => {
+        const next = palette.slice();
+        next.splice(index, 1);
+        setLive({ colors: next });
+        renderColorsSoon();
+      };
+      chips.appendChild(swatch);
+    });
+    if (!palette.length) {
+      const empty = document.createElement("span");
+      empty.className = "tip";
+      empty.textContent = "palette vide : clique des couleurs ci-dessus";
+      chips.appendChild(empty);
+    }
+  }
+
+  const beatsIndex = LENGTHS.indexOf(look.color_beats);
+  setSlider("colorBeats", beatsIndex < 0 ? 3 : beatsIndex);
+  $("colorBeatsVal").textContent = LENGTHS[+$("colorBeats").value] + " temps";
+}
+
+/** Le serveur repond avec un leger retard : on relit l'etat juste apres. */
+function renderColorsSoon() {
+  setTimeout(() => refreshStatus().then(renderColors).catch(() => {}), 80);
 }
 
 function syncControls() {
@@ -251,8 +389,10 @@ function syncControls() {
   setSlider("pan", Math.round((look.pan || 0) * 100));
   setSlider("tilt", Math.round((look.tilt || 0) * 100));
   setSlider("speed", Math.round((look.speed || 0) * 100));
-  [...$("colorSwatches").children].forEach((c) =>
-    c.classList.toggle("on", c.dataset.color === look.color && look.color_mode === "static"));
+  if (dragIndex < 0) {
+    pathPoints = (look.path || []).map((point) => [point[0], point[1]]);
+  }
+  renderColors();
   updateLabels();
 }
 
@@ -515,8 +655,114 @@ async function reload() {
   applyExpert();
 }
 
+/* ------------------------------------------------- outils sur l'apercu */
+function setTool(next) {
+  tool = next;
+  document.querySelectorAll(".tool").forEach((button) =>
+    button.classList.toggle("on", button.dataset.tool === tool));
+  $("stageHint").textContent =
+    tool === "aim" ? "glisse sur l'aperçu : les lampes suivent ton doigt"
+      : tool === "path" ? "clique pour poser un point, glisse-le pour le bouger"
+        : "";
+  $("pathUndo").classList.toggle("hidden", tool !== "path");
+  $("pathClear").classList.toggle("hidden", tool !== "path");
+  $("stage").classList.toggle("editing", tool !== "none");
+}
+
+function commitPath() {
+  const values = { path: pathPoints.map((p) => [p[0], p[1]]) };
+  if (pathPoints.length >= 2) values.position_effect = "path";
+  setLive(values);
+}
+
+let stageActive = false;
+function bindStage() {
+  const canvas = $("stage");
+  const locate = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    return [event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height];
+  };
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (tool === "none") return;
+    event.preventDefault();
+    const [x, y, width, height] = locate(event);
+    canvas.setPointerCapture(event.pointerId);
+    stageActive = true;
+    touching = true;
+    if (tool === "aim") {
+      const [pan, tilt] = fromStage(x, y, width, height);
+      setLive({ pan, tilt });
+      return;
+    }
+    const hit = pathPoints.findIndex((point) => {
+      const [px, py] = toStage(point[0], point[1], width, height);
+      return Math.hypot(px - x, py - y) <= 18;
+    });
+    if (hit >= 0) {
+      dragIndex = hit;
+    } else {
+      pathPoints.push(fromStage(x, y, width, height));
+      dragIndex = pathPoints.length - 1;
+      commitPath();
+    }
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!stageActive) return;
+    const [x, y, width, height] = locate(event);
+    if (tool === "aim") {
+      const [pan, tilt] = fromStage(x, y, width, height);
+      setLive({ pan, tilt });
+    } else if (dragIndex >= 0) {
+      pathPoints[dragIndex] = fromStage(x, y, width, height);
+      commitPath();
+    }
+  });
+
+  const release = () => {
+    if (!stageActive) return;
+    stageActive = false;
+    touching = false;
+    dragIndex = -1;
+    if (tool === "path") commitPath();
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+}
+
 /* --------------------------------------------------------------- events */
 function bindEvents() {
+  document.querySelectorAll(".tool").forEach((button) => {
+    button.onclick = () => setTool(button.dataset.tool);
+  });
+  bindStage();
+
+  $("pathUndo").onclick = () => {
+    pathPoints.pop();
+    if (pathPoints.length < 2) setLive({ position_effect: "none" });
+    commitPath();
+  };
+  $("pathClear").onclick = () => {
+    pathPoints = [];
+    setLive({ path: [], position_effect: "none" });
+  };
+
+  document.querySelectorAll("[data-cmode]").forEach((button) => {
+    button.onclick = () => {
+      const mode = button.dataset.cmode;
+      const values = { color_mode: mode };
+      if (mode !== "static" && !(currentLook().colors || []).length) {
+        values.colors = availableColors().slice(0, 4);   // palette de depart
+      }
+      setLive(values);
+      renderColorsSoon();
+    };
+  });
+  $("colorBeats").addEventListener("input", (event) => {
+    $("colorBeatsVal").textContent = LENGTHS[+event.target.value] + " temps";
+    setLive({ color_beats: LENGTHS[+event.target.value] });
+  });
   document.querySelectorAll(".tab[data-page]").forEach((tab) => {
     tab.onclick = () => {
       document.querySelectorAll(".tab[data-page]").forEach((t) =>
@@ -714,6 +960,7 @@ function bindEvents() {
 /* ----------------------------------------------------------------- boot */
 (async function main() {
   bindEvents();
+  setTool("none");
   requestAnimationFrame(animate);
   try {
     await reload();

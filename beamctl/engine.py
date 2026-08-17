@@ -162,7 +162,8 @@ class Engine:
             ))
 
         ctx = EffectContext(beats=beats, bpm=self.clock.bpm, length=look.length,
-                            size=look.size, spread=look.spread)
+                            size=look.size, spread=look.spread,
+                            params={"path": look.path})
         apply_effect(look.position_effect, states, ctx)
         apply_effect(look.intensity_effect, states, ctx)
         return states

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from beamctl.beat import BeatClock
 from beamctl.dmx import Universe
-from beamctl.effects import EFFECTS, EffectContext, apply_effect
+from beamctl.effects import EFFECTS, EffectContext, apply_effect, sample_path
 from beamctl.engine import Engine
 from beamctl.fixtures import Fixture, FixtureState, ProfileLibrary
 from beamctl.output import ArtNetOutput, DummyOutput, SacnOutput
@@ -183,6 +183,68 @@ class TestEffects(unittest.TestCase):
         states = self.states(2)
         apply_effect("strobe_beat", states, EffectContext(beats=0.0, length=1))
         self.assertGreater(states[0].strobe, 0)
+
+
+class TestCustomPath(unittest.TestCase):
+    SQUARE = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]
+
+    def test_sample_passes_through_its_points(self):
+        for index, point in enumerate(self.SQUARE):
+            x, y = sample_path(self.SQUARE, index / len(self.SQUARE))
+            self.assertAlmostEqual(x, point[0], places=6)
+            self.assertAlmostEqual(y, point[1], places=6)
+
+    def test_sample_is_a_closed_loop(self):
+        self.assertEqual(sample_path(self.SQUARE, 0.0), sample_path(self.SQUARE, 1.0))
+
+    def test_sample_survives_degenerate_input(self):
+        self.assertEqual(sample_path([], 0.3), (0.5, 0.5))
+        self.assertEqual(sample_path([[0.1, 0.9]], 0.7), (0.1, 0.9))
+
+    def test_effect_moves_along_the_curve(self):
+        ctx = EffectContext(beats=0.0, length=4, size=0.5,
+                            params={"path": self.SQUARE})
+        first = [FixtureState()]
+        apply_effect("path", first, ctx)
+        self.assertAlmostEqual(first[0].pan, 0.2, places=6)
+        self.assertAlmostEqual(first[0].tilt, 0.2, places=6)
+
+        later = [FixtureState()]
+        apply_effect("path", later, EffectContext(beats=1.0, length=4, size=0.5,
+                                                  params={"path": self.SQUARE}))
+        self.assertAlmostEqual(later[0].pan, 0.8, places=6)
+
+    def test_size_scales_around_the_centre(self):
+        states = [FixtureState()]
+        apply_effect("path", states, EffectContext(beats=0.0, length=4, size=0.25,
+                                                   params={"path": self.SQUARE}))
+        self.assertAlmostEqual(states[0].pan, 0.35, places=6)   # moitie du trace
+
+    def test_empty_path_is_a_no_op(self):
+        states = [FixtureState(pan=0.42, tilt=0.11)]
+        apply_effect("path", states, EffectContext(beats=3.0, params={"path": []}))
+        self.assertEqual((states[0].pan, states[0].tilt), (0.42, 0.11))
+
+    def test_engine_renders_a_drawn_path(self):
+        directory = tempfile.mkdtemp()
+        show = Show(path=os.path.join(directory, "show.json"))
+        engine = Engine(show, output=DummyOutput())
+        show.upsert_look({"id": "trace", "name": "Tracé", "dimmer": 1.0,
+                          "position_effect": "path", "size": 0.5,
+                          "path": self.SQUARE})
+        engine.activate_look("trace")
+        engine.clock.resync()           # temps 0 = premier point du trace
+        engine.render()
+        self.assertEqual(engine.universe.get(1), round(0.2 * 255))
+
+    def test_path_survives_a_save_and_reload(self):
+        directory = tempfile.mkdtemp()
+        path = os.path.join(directory, "show.json")
+        show = Show(path=path)
+        show.upsert_look({"id": "t", "name": "T", "path": self.SQUARE,
+                          "position_effect": "path"})
+        show.save()
+        self.assertEqual(Show(path=path).get_look("t").path, self.SQUARE)
 
 
 class TestShow(unittest.TestCase):
