@@ -142,8 +142,15 @@ def _open_serial(port: str, baudrate: int, stopbits: int):
             "pyserial est requis pour les interfaces USB-DMX : pip install pyserial"
         ) from exc
     sb = serial.STOPBITS_TWO if stopbits == 2 else serial.STOPBITS_ONE
-    return serial.Serial(port=port, baudrate=baudrate, bytesize=8,
-                         parity="N", stopbits=sb, timeout=1)
+    try:
+        return serial.Serial(port=port, baudrate=baudrate, bytesize=8,
+                             parity="N", stopbits=sb, timeout=1)
+    except serial.SerialException as exc:
+        raise RuntimeError(
+            f"impossible d'ouvrir {port} ({exc}). Verifie le nom du port avec "
+            "`python -m beamctl --list-serial`, que l'interface est branchee, "
+            "et qu'aucun autre logiciel ne l'utilise."
+        ) from exc
 
 
 class EnttecProOutput(Output):

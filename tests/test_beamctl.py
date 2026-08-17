@@ -341,6 +341,67 @@ class TestOutputPackets(unittest.TestCase):
         output.close()
 
 
+def _pyserial_available() -> bool:
+    try:
+        import serial  # noqa: F401
+    except ImportError:
+        return False
+    return hasattr(os, "openpty")
+
+
+@unittest.skipUnless(_pyserial_available(),
+                     "pyserial ou openpty indisponible (Windows / dependance absente)")
+class TestSerialOutputs(unittest.TestCase):
+    """Les pilotes USB sont verifies sur un faux port serie (pty)."""
+
+    def _fake_port(self):
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        return master, os.ttyname(slave)
+
+    def test_enttec_frame(self):
+        from beamctl.output import EnttecProOutput
+
+        master, port = self._fake_port()
+        output = EnttecProOutput(port=port)
+        data = bytearray(512)
+        data[0], data[5] = 255, 128
+        output.send(bytes(data))
+        frame = os.read(master, 2048)
+        output.close()
+
+        self.assertEqual(len(frame), 518)
+        self.assertEqual(frame[0], 0x7E)
+        self.assertEqual(frame[1], 6)                                  # envoi DMX
+        self.assertEqual(int.from_bytes(frame[2:4], "little"), 513)
+        self.assertEqual(frame[4], 0)                                  # start code
+        self.assertEqual(frame[5], 255)
+        self.assertEqual(frame[10], 128)
+        self.assertEqual(frame[-1], 0xE7)
+
+    def test_opendmx_frame(self):
+        from beamctl.output import OpenDmxOutput
+
+        master, port = self._fake_port()
+        output = OpenDmxOutput(port=port)
+        data = bytearray(512)
+        data[0] = 200
+        output.send(bytes(data))
+        frame = os.read(master, 2048)
+        output.close()
+
+        self.assertEqual(len(frame), 513)
+        self.assertEqual(frame[0], 0)
+        self.assertEqual(frame[1], 200)
+
+    def test_missing_port_explains_itself(self):
+        from beamctl.output import create_output
+
+        with self.assertRaises(RuntimeError) as caught:
+            create_output({"driver": "enttec", "port": "/dev/ttyINEXISTANT"})
+        self.assertIn("--list-serial", str(caught.exception))
+
+
 class TestLook(unittest.TestCase):
     def test_from_dict_ignores_unknown_keys(self):
         look = Look.from_dict({"id": "a", "name": "A", "inconnu": 12})
