@@ -120,16 +120,23 @@ depuis n'importe quel dossier.
 
 ```
 beamctl 1.0.0 — show : .../show.json
-sortie DMX : Enttec DMX USB Pro sur COM3
-lampes     : 2
+lampes declarees : 1
 
-  ordinateur : http://127.0.0.1:8080/
-  telephone  : http://192.168.x.x:8080/
+  SORTIE DMX ACTIVE  —  Enttec DMX USB Pro sur COM3
+  Les lampes recoivent le signal. ...
 ```
 
-Si la ligne dit `aucune sortie (mode simulation)`, le boîtier n'a pas été
-trouvé : le logiciel démarre quand même, tu peux tout préparer, mais rien ne
-part vers les lampes. Voir la section 6.
+C'est cette ligne-là qui compte. Si tu lis à la place :
+
+```
+  /!\  AUCUNE INTERFACE DMX  —  rien n'est envoye aux lampes.
+```
+
+le boîtier n'a pas été trouvé : le logiciel démarre quand même et tu peux
+préparer tes looks, mais rien ne part vers les projecteurs. Voir la section 6.
+
+La dernière ligne (`Pour quitter : Ctrl+C`) explique juste comment arrêter le
+logiciel — ce n'est pas un état d'erreur.
 
 Tout tourne sur ta machine : aucun compte, aucun serveur distant, aucune
 connexion Internet nécessaire une fois le code téléchargé.

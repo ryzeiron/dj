@@ -98,15 +98,28 @@ def main(argv: list[str] | None = None) -> int:
                   token=args.token, verbose=args.verbose)
 
     suffix = f"?t={args.token}" if args.token else ""
+    simulation = engine.output.name == "dummy"
+
     print(f"beamctl {__version__} — show : {show.path}")
-    print(f"sortie DMX : {engine.output.describe()}")
-    print(f"lampes     : {len(show.fixtures)}")
+    print(f"lampes declarees : {len(show.fixtures)}")
     print()
-    print(f"  ordinateur : http://127.0.0.1:{args.port}/{suffix}")
+    if simulation:
+        print("  /!\\  AUCUNE INTERFACE DMX  —  rien n'est envoye aux lampes.")
+        print("      Tu peux preparer tes looks, mais les projecteurs ne")
+        print("      bougeront pas. Pour savoir pourquoi :")
+        print("      python -m beamctl --check")
+    else:
+        print(f"  SORTIE DMX ACTIVE  —  {engine.output.describe()}")
+        print("  Les lampes recoivent le signal. Si rien ne s'allume, verifie")
+        print("  leur adresse DMX et le cable XLR.")
+    print()
+    print("  Ouvre l'interface ici :")
+    print(f"    sur cet ordinateur : http://127.0.0.1:{args.port}/{suffix}")
     if args.bind not in ("127.0.0.1", "localhost"):
-        print(f"  telephone  : http://{lan_ip()}:{args.port}/{suffix}")
+        print(f"    sur ton telephone  : http://{lan_ip()}:{args.port}/{suffix}")
     print()
-    print("Ctrl+C pour arreter (les lampes sont eteintes en sortant).")
+    print("beamctl tourne. Laisse cette fenetre ouverte pendant la soiree.")
+    print("Pour quitter : Ctrl+C, ou ferme la fenetre.")
 
     if args.open_browser:
         import webbrowser
@@ -128,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         while not stopping:
             time.sleep(0.2)
     finally:
-        print("\narret…")
+        print("\narret de beamctl, les lampes sont eteintes.")
         httpd.shutdown()
         engine.stop()
         show.save()
