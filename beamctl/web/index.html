@@ -177,11 +177,12 @@
     <div class="field">
       <label>Type de branchement</label>
       <select id="driver">
+        <option value="usb">Boîtier USB — détection automatique</option>
         <option value="dummy">Aucune — mode simulation</option>
+        <option value="enttec">Boîtier USB, protocole Enttec imposé</option>
+        <option value="opendmx">Boîtier USB, protocole Open DMX imposé</option>
         <option value="artnet">Boîtier réseau Art-Net</option>
         <option value="sacn">Boîtier réseau sACN E1.31</option>
-        <option value="enttec">Boîtier USB Enttec DMX USB Pro</option>
-        <option value="opendmx">Boîtier USB Open DMX (FTDI)</option>
       </select>
     </div>
     <div class="field" id="fieldHost"><label>Adresse IP du boîtier</label>
@@ -240,10 +241,9 @@
     <div id="wizStep3" class="wizStep hidden">
       <h3>Comment l'ordinateur parle aux lampes ?</h3>
       <div class="choices">
+        <button class="choice" data-driver="usb">Un boîtier USB est branché<small>détection automatique</small></button>
         <button class="choice" data-driver="dummy">Rien pour l'instant<small>simulation, sans matériel</small></button>
-        <button class="choice" data-driver="enttec">Boîtier USB Enttec<small>DMX USB Pro</small></button>
-        <button class="choice" data-driver="opendmx">Boîtier USB simple<small>Open DMX / FTDI</small></button>
-        <button class="choice" data-driver="artnet">Boîtier réseau<small>Art-Net, Wi-Fi ou câble</small></button>
+        <button class="choice" data-driver="artnet">Un boîtier réseau<small>Art-Net, Wi-Fi ou câble</small></button>
       </div>
       <div id="wizExtra" class="field hidden">
         <label id="wizExtraLabel">Détail</label>

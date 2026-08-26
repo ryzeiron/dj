@@ -6,8 +6,9 @@ import os
 import socket
 import struct
 import sys
-import threading
 import tempfile
+import threading
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,8 +19,17 @@ from beamctl.dmx import Universe
 from beamctl.effects import EFFECTS, EffectContext, apply_effect, sample_path
 from beamctl.engine import Engine
 from beamctl.fixtures import Fixture, FixtureState, ProfileLibrary
+from beamctl import output
 from beamctl.output import ArtNetOutput, DummyOutput, SacnOutput
 from beamctl.show import Look, Show
+
+
+def _pyserial_available() -> bool:
+    try:
+        import serial  # noqa: F401
+    except ImportError:
+        return False
+    return hasattr(os, "openpty")
 
 
 class TestUniverse(unittest.TestCase):
@@ -522,6 +532,139 @@ class TestLampTest(unittest.TestCase):
         self.assertEqual(self.engine.universe.get(7), 0)      # shutter ferme
 
 
+class FakeEnttecWidget(threading.Thread):
+    """Un widget Enttec sur un pty : il repond a la requete de parametres."""
+
+    daemon = True
+
+    def __init__(self, answer: bool = True) -> None:
+        super().__init__()
+        self.master, slave = os.openpty()
+        self.port = os.ttyname(slave)
+        self.answer = answer
+        self.asked = False
+
+    def run(self) -> None:
+        deadline = time.time() + 3
+        buffer = b""
+        while time.time() < deadline:
+            try:
+                buffer += os.read(self.master, 64)
+            except OSError:
+                return
+            if b"\x7e\x03" in buffer:
+                self.asked = True
+                if self.answer:
+                    params = bytes([0, 1, 9, 1, 40, 40, 0])
+                    os.write(self.master, b"\x7e\x03"
+                             + len(params).to_bytes(2, "little") + params + b"\xe7")
+                return
+
+
+@unittest.skipUnless(hasattr(os, "openpty") and _pyserial_available(),
+                     "pty ou pyserial indisponible")
+class TestUsbDetection(unittest.TestCase):
+    def test_recognises_an_enttec_widget(self):
+        widget = FakeEnttecWidget(answer=True)
+        widget.start()
+        driver = output.identify_interface(widget.port, timeout=1.0)
+        widget.join(timeout=2)
+        self.assertTrue(widget.asked, "le widget n'a pas recu la requete")
+        self.assertEqual(driver, "enttec")
+
+    def test_a_silent_box_is_treated_as_open_dmx(self):
+        widget = FakeEnttecWidget(answer=False)
+        widget.start()
+        driver = output.identify_interface(widget.port, timeout=0.5)
+        widget.join(timeout=2)
+        self.assertEqual(driver, "opendmx")
+
+    def test_usb_driver_refuses_to_guess_when_nothing_is_plugged(self):
+        with unittest.mock.patch.object(output, "serial_candidates", return_value=[]):
+            self.assertIsNone(output.find_usb_interface())
+            with self.assertRaises(RuntimeError) as caught:
+                output.create_output({"driver": "usb"})
+        self.assertIn("aucun boitier USB-DMX", str(caught.exception))
+
+    def test_a_plain_serial_port_is_not_mistaken_for_an_interface(self):
+        """Un COM de carte mere, muet et sans puce FTDI, doit etre ignore."""
+        widget = FakeEnttecWidget(answer=False)
+        widget.start()
+        plain = [{"device": widget.port, "description": "port serie",
+                  "vid": None, "pid": None, "likely_dmx": False, "why": ""}]
+        with unittest.mock.patch.object(output, "serial_candidates", return_value=plain):
+            found = output.find_usb_interface()
+        widget.join(timeout=2)
+        self.assertIsNone(found)
+
+    def test_an_answering_box_is_accepted_even_without_a_known_chip(self):
+        widget = FakeEnttecWidget(answer=True)
+        widget.start()
+        unknown = [{"device": widget.port, "description": "boitier inconnu",
+                    "vid": None, "pid": None, "likely_dmx": False, "why": ""}]
+        with unittest.mock.patch.object(output, "serial_candidates", return_value=unknown):
+            found = output.find_usb_interface()
+        widget.join(timeout=2)
+        self.assertIsNotNone(found)
+        self.assertEqual(found["driver"], "enttec")
+
+    def test_full_chain_reaches_the_wire(self):
+        """Moteur -> detection USB -> vraies trames Enttec sur le port."""
+        widget = FakeEnttecWidget(answer=True)
+        widget.start()
+        fake = [{"device": widget.port, "description": "FT232R USB UART",
+                 "vid": 0x0403, "pid": 0x6001, "likely_dmx": True, "why": "FTDI"}]
+
+        directory = tempfile.mkdtemp()
+        show = Show(path=os.path.join(directory, "show.json"))
+        show.config["output"] = {"driver": "usb"}
+        with unittest.mock.patch.object(output, "serial_candidates", return_value=fake):
+            engine = Engine(show)
+        widget.join(timeout=2)
+        self.assertIn("Enttec", engine.output.describe())
+
+        engine.activate_look("l12")           # plein feu
+        engine.clock.resync()
+        engine.render()
+        engine.output.close()
+
+        os.set_blocking(widget.master, False)
+        time.sleep(0.1)
+        raw = b""
+        try:
+            while True:
+                chunk = os.read(widget.master, 4096)
+                if not chunk:
+                    break
+                raw += chunk
+        except BlockingIOError:
+            pass
+
+        start = raw.find(b"\x7e\x06")
+        self.assertGreaterEqual(start, 0, "aucune trame DMX envoyee")
+        frame = raw[start:]
+        length = struct.unpack("<H", frame[2:4])[0]
+        self.assertEqual(length, 513)         # start code + 512 canaux
+        self.assertEqual(frame[4 + length], 0xE7)
+        slots = frame[5:5 + 512]
+        self.assertEqual(slots[5], 255)       # dimmer lampe 1
+        self.assertEqual(slots[6], 255)       # shutter lampe 1
+        self.assertEqual(slots[19], 255)      # dimmer lampe 2, adresse 15
+
+    def test_known_dmx_chips_come_first(self):
+        ports = [{"device": "COM1", "likely_dmx": False},
+                 {"device": "COM7", "likely_dmx": True}]
+        class FakePort:
+            def __init__(self, device, vid):
+                self.device, self.vid, self.pid = device, vid, None
+                self.description = ""
+        fake = [FakePort("COM1", None), FakePort("COM7", 0x0403)]
+        with unittest.mock.patch("serial.tools.list_ports.comports", return_value=fake):
+            ordered = output.serial_candidates()
+        self.assertEqual(ordered[0]["device"], "COM7")
+        self.assertTrue(ordered[0]["likely_dmx"])
+
+
 class TestOutputPackets(unittest.TestCase):
     def test_artnet_header(self):
         output = ArtNetOutput(host="127.0.0.1", universe=3)
@@ -618,14 +761,6 @@ class TestWizardPatch(unittest.TestCase):
     def test_count_is_clamped(self):
         self.assertEqual(len(self.show.auto_patch(0, "beam100_14ch")), 1)
         self.assertEqual(len(self.show.auto_patch(99, "beam100_14ch")), 32)
-
-
-def _pyserial_available() -> bool:
-    try:
-        import serial  # noqa: F401
-    except ImportError:
-        return False
-    return hasattr(os, "openpty")
 
 
 @unittest.skipUnless(_pyserial_available(),

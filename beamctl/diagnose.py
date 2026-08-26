@@ -20,45 +20,34 @@ ARTNET_ID = b"Art-Net\x00"
 OP_POLL = 0x2000
 OP_POLL_REPLY = 0x2100
 
-#: USB chips found in DMX interfaces, by vendor id
-KNOWN_USB_VENDORS = {
-    0x0403: "FTDI — Enttec DMX USB Pro, Open DMX USB et clones",
-    0x16C0: "interface DMX generique",
-    0x1209: "interface DMX open source",
-}
-
-
-# --------------------------------------------------------------------- USB
 def pyserial_status() -> dict:
     try:
-        import serial  # noqa: F401
+        import serial
     except ImportError:
         return {"ok": False,
                 "detail": "pyserial n'est pas installe — `pip install pyserial` "
-                          "(necessaire seulement pour les interfaces USB)"}
-    import serial
+                          "(necessaire pour les interfaces USB)"}
     return {"ok": True, "detail": f"pyserial {serial.__version__}"}
 
 
 def serial_ports() -> list[dict]:
     """Every serial port, with a guess about which one is a DMX interface."""
+    from .output import serial_candidates
+
+    ports = []
+    for port in serial_candidates():
+        ports.append(dict(port, serial_number=""))
+    return ports
+
+
+def identified_interface() -> dict | None:
+    """Which box the `usb` driver would pick, and what protocol it speaks."""
+    from .output import find_usb_interface
+
     try:
-        from serial.tools import list_ports
-    except ImportError:
-        return []
-    found = []
-    for port in list_ports.comports():
-        vendor = getattr(port, "vid", None)
-        found.append({
-            "device": port.device,
-            "description": port.description or "",
-            "vid": vendor,
-            "pid": getattr(port, "pid", None),
-            "serial_number": getattr(port, "serial_number", None) or "",
-            "likely_dmx": vendor in KNOWN_USB_VENDORS,
-            "why": KNOWN_USB_VENDORS.get(vendor, ""),
-        })
-    return found
+        return find_usb_interface()
+    except Exception:
+        return None
 
 
 # ----------------------------------------------------------------- network
@@ -170,6 +159,7 @@ def run(show, discover: bool = True, engine=None) -> dict:
         "pyserial": pyserial_status(),
         "serial_ports": ports,
         "usb_candidates": [p for p in ports if p["likely_dmx"]],
+        "usb_interface": identified_interface(),
         "artnet_nodes": discover_artnet() if discover else [],
         "output": ({"ok": engine.output_error is None,
                     "detail": engine.output_error or engine.output.describe()}
@@ -193,6 +183,11 @@ def format_report(report: dict) -> str:
 
     serial_status = report["pyserial"]
     lines.append(f"pyserial : {serial_status['detail']}")
+    detected = report.get("usb_interface")
+    if detected:
+        protocol = ("protocole Enttec DMX USB Pro" if detected["driver"] == "enttec"
+                    else "protocole Open DMX (FTDI direct)")
+        lines.append(f"  -> boitier utilisable sur {detected['port']} : {protocol}")
     ports = report["serial_ports"]
     if not ports:
         lines.append("  aucun port serie detecte")

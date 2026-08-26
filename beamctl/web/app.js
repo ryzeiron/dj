@@ -613,8 +613,17 @@ async function runDiagnose() {
   const ports = report.serial_ports || [];
   const candidates = report.usb_candidates || [];
   let usb = checkLine(report.pyserial.ok, report.pyserial.detail);
-  if (candidates.length) {
-    usb += checkLine(true, `${candidates.length} interface(s) USB-DMX reconnue(s)`);
+  const detected = report.usb_interface;
+  if (detected) {
+    const protocol = detected.driver === "enttec"
+      ? "protocole Enttec DMX USB Pro"
+      : "protocole Open DMX (FTDI direct)";
+    usb += checkLine(true, `boîtier détecté sur <code>${detected.port}</code> — ${protocol}`);
+    usb += `<div class="portRow hit"><span>Le logiciel peut s'y connecter tout seul
+      à chaque démarrage, même si Windows change le numéro de port.</span>
+      <button class="mini accent" data-usb="auto">utiliser ce boîtier</button></div>`;
+  } else if (candidates.length) {
+    usb += checkLine(false, `${candidates.length} port(s) DMX possible(s), mais aucun ne répond`);
   } else if (ports.length) {
     usb += checkLine(null, "aucun port ne ressemble à une interface DMX");
   } else {
@@ -655,8 +664,8 @@ async function runDiagnose() {
 
   box.querySelectorAll("[data-usb]").forEach((button) => {
     button.onclick = async () => {
-      $("driver").value = "enttec";
-      $("serialPort").value = button.dataset.usb;
+      $("driver").value = "usb";       // le protocole est identifie au demarrage
+      $("serialPort").value = "";
       renderOutputFields();
       $("applyOutput").click();
     };
@@ -995,22 +1004,17 @@ function bindEvents() {
       const driver = button.dataset.driver;
       wizard.output = { driver };
       if (driver === "dummy") return wizFinish();
-      const network = driver === "artnet";
-      $("wizExtraLabel").textContent = network
-        ? "Adresse IP du boîtier (laisse vide pour diffuser à tout le réseau)"
-        : "Port série du boîtier (python -m beamctl --list-serial pour le trouver)";
-      $("wizExtraInput").value = network ? "" : "/dev/ttyUSB0";
-      $("wizExtraInput").placeholder = network ? "192.168.1.50" : "/dev/ttyUSB0 ou COM3";
+      if (driver === "usb") return wizFinish();
+      $("wizExtraLabel").textContent =
+        "Adresse IP du boîtier (laisse vide pour diffuser à tout le réseau)";
+      $("wizExtraInput").value = "";
+      $("wizExtraInput").placeholder = "192.168.1.50";
       $("wizExtra").classList.remove("hidden");
     };
   });
   $("wizExtraOk").onclick = () => {
     const value = $("wizExtraInput").value.trim();
-    if (wizard.output.driver === "artnet") {
-      if (value) wizard.output.host = value;
-    } else {
-      wizard.output.port = value;
-    }
+    if (value) wizard.output.host = value;
     wizFinish();
   };
 

@@ -153,6 +153,80 @@ def _open_serial(port: str, baudrate: int, stopbits: int):
         ) from exc
 
 
+#: USB chips found in DMX interfaces, by vendor id
+KNOWN_USB_VENDORS = {
+    0x0403: "FTDI — Enttec DMX USB Pro, Open DMX USB et clones",
+    0x16C0: "interface DMX generique",
+    0x1209: "interface DMX open source",
+}
+
+
+def serial_candidates() -> list[dict]:
+    """Serial ports, the ones that look like a DMX interface first."""
+    try:
+        from serial.tools import list_ports  # type: ignore
+    except ImportError:
+        return []
+    ports = []
+    for port in list_ports.comports():
+        vendor = getattr(port, "vid", None)
+        ports.append({
+            "device": port.device,
+            "description": port.description or "",
+            "vid": vendor,
+            "pid": getattr(port, "pid", None),
+            "likely_dmx": vendor in KNOWN_USB_VENDORS,
+            "why": KNOWN_USB_VENDORS.get(vendor, ""),
+        })
+    ports.sort(key=lambda p: not p["likely_dmx"])
+    return ports
+
+
+def identify_interface(port: str, timeout: float = 0.4) -> str:
+    """Tell an Enttec-protocol box from a dumb FTDI dongle.
+
+    The Enttec DMX USB Pro answers a "get widget parameters" message; the plain
+    Open DMX dongles have no firmware at all and stay silent. That reply is the
+    one and only thing a DMX interface ever sends back.
+    """
+    serial_port = _open_serial(port, 57600, stopbits=1)
+    try:
+        serial_port.timeout = timeout
+        serial_port.reset_input_buffer()
+        serial_port.write(b"\x7e\x03\x02\x00\x00\x00\xe7")
+        reply = serial_port.read(2)
+        if len(reply) == 2 and reply[0] == 0x7E and reply[1] == 0x03:
+            return "enttec"
+        return "opendmx"
+    finally:
+        try:
+            serial_port.close()
+        except Exception:
+            pass
+
+
+def find_usb_interface() -> dict | None:
+    """The USB-DMX box to use, with the protocol it speaks.
+
+    A PC often exposes serial ports that have nothing to do with lighting (a
+    motherboard COM port, a bluetooth link). Picking one of those would look
+    connected while nothing reaches the lamps, so a port is only accepted when
+    either its USB chip is one used by DMX interfaces, or it answers the Enttec
+    handshake — which no ordinary serial port does.
+    """
+    for candidate in serial_candidates():
+        try:
+            driver = identify_interface(candidate["device"])
+        except Exception:
+            continue                      # port occupe ou inaccessible
+        if not candidate["likely_dmx"] and driver != "enttec":
+            continue                      # port serie quelconque : on ne devine pas
+        return {"driver": driver, "port": candidate["device"],
+                "description": candidate["description"],
+                "likely_dmx": candidate["likely_dmx"]}
+    return None
+
+
 class EnttecProOutput(Output):
     """Enttec DMX USB Pro and the many clones that speak the same protocol."""
 
@@ -216,9 +290,23 @@ DRIVERS = {
 
 
 def create_output(config: dict) -> Output:
-    """Build an output from a config dict, falling back to dummy on error."""
+    """Build an output from a config dict.
+
+    The `usb` driver is resolved at start-up: the box is looked up and its
+    protocol identified, so the show file never has to name a COM port that
+    Windows may renumber between two gigs.
+    """
     cfg = dict(config or {})
     driver = str(cfg.pop("driver", "dummy")).lower()
+    if driver == "usb":
+        found = find_usb_interface()
+        if not found:
+            raise RuntimeError(
+                "aucun boitier USB-DMX detecte. Verifie qu'il est branche, que "
+                "son pilote est installe, et qu'aucun autre logiciel ne l'utilise."
+            )
+        driver = found["driver"]
+        cfg.setdefault("port", found["port"])
     cls = DRIVERS.get(driver)
     if cls is None:
         raise ValueError(f"sortie DMX inconnue : {driver}")

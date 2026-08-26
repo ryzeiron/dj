@@ -19,8 +19,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Contrôle DMX pour tetes mobiles BEAM 100 (interface web).")
     parser.add_argument("--show", default=DEFAULT_SHOW_PATH,
                         help="fichier de show (defaut : ./show.json)")
-    parser.add_argument("--output", choices=["dummy", "artnet", "sacn", "enttec", "opendmx"],
-                        help="interface DMX (sinon celle du fichier de show)")
+    parser.add_argument("--output",
+                        choices=["usb", "dummy", "artnet", "sacn", "enttec", "opendmx"],
+                        help="interface DMX : `usb` detecte le boitier branche "
+                             "(sinon celle du fichier de show)")
     parser.add_argument("--dmx-host", help="IP du node Art-Net / sACN")
     parser.add_argument("--universe", type=int, help="univers DMX")
     parser.add_argument("--serial-port", help="port serie de l'interface USB-DMX")

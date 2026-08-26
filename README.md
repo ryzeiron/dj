@@ -30,22 +30,32 @@ de tourner dans le vide.
 | Câbles DMX | XLR 3 points, de l'interface vers la lampe 1, puis lampe 1 → lampe 2 |
 | Bouchon de terminaison | résistance 120 Ω sur la dernière lampe — évite les mouvements parasites |
 
-Trois familles d'interfaces, toutes gérées :
+**Le montage normal, tout en câble :**
+
+```
+PC ──USB──> boîtier USB-DMX ──XLR──> Beam 1 ──XLR──> Beam 2 ──> bouchon 120 Ω
+```
+
+Un PC n'a pas de sortie DMX : le petit boîtier USB-DMX est la pièce qui manque
+entre les deux. Une fois qu'il est branché, tu n'as **rien à configurer** :
+
+```bash
+pip install pyserial          # une fois, pour l'USB
+python -m beamctl --output usb
+```
+
+Le logiciel cherche le boîtier, reconnaît tout seul son protocole et s'y
+connecte — y compris quand Windows lui change son numéro de port (COM3 un soir,
+COM5 le lendemain).
 
 | Type | Exemples | Choix dans le logiciel |
 |---|---|---|
-| USB → DMX « Pro » | Enttec DMX USB Pro et clones | `enttec` (le plus fiable) |
-| USB → DMX FTDI simple | Open DMX USB, dongles à ~20 € | `opendmx` |
-| Réseau → DMX | boîtiers Art-Net ou sACN, filaire ou Wi-Fi | `artnet` / `sacn` |
+| **USB → DMX** | Enttec DMX USB Pro, Open DMX USB, dongles FTDI à ~20 € | **`usb`** (détection automatique) |
+| Réseau → DMX | boîtiers Art-Net ou sACN | `artnet` / `sacn`, si un jour tu en veux |
 
-Les deux interfaces USB ont besoin d'une bibliothèque en plus :
-
-```bash
-pip install pyserial
-```
-
-Art-Net et sACN ne demandent rien du tout. Un boîtier Art-Net Wi-Fi est la
-solution la plus confortable en soirée : plus de câble USB à faire tomber.
+Sur Windows, le boîtier doit apparaître comme un port COM dans le gestionnaire
+de périphériques. Si ce n'est pas le cas, installe le **pilote VCP FTDI**
+(ftdichip.com) — c'est le cas le plus fréquent de boîtier non détecté.
 
 ## 2. Installation
 
@@ -76,13 +86,16 @@ si deux lampes se chevauchent.
 ## 4. Lancer pour de vrai
 
 ```bash
-# boîtier Art-Net / sACN sur le réseau
-python3 -m beamctl --output artnet --dmx-host 192.168.1.50
+# le cas normal : boîtier USB branché, détection automatique
+python -m beamctl --output usb
 
-# interface USB
-python3 -m beamctl --list-serial            # trouver le port
-python3 -m beamctl --output enttec --serial-port /dev/ttyUSB0
-python3 -m beamctl --output opendmx --serial-port COM3        # Windows
+# si jamais tu veux forcer un protocole et un port precis
+python -m beamctl --list-serial                               # voir les ports
+python -m beamctl --output enttec --serial-port COM3
+python -m beamctl --output opendmx --serial-port /dev/ttyUSB0
+
+# boîtier réseau, si un jour tu en utilises un
+python -m beamctl --output artnet --dmx-host 192.168.1.50
 ```
 
 L'interface est aussi réglable dans l'onglet **Réglages**, sans relancer.
@@ -175,9 +188,11 @@ En ligne de commande :
 python -m beamctl --check
 ```
 
-Il teste l'interface configurée, liste les ports USB en signalant ceux qui sont
-des interfaces DMX (puce FTDI), envoie un ArtPoll sur le réseau pour trouver les
-boîtiers Art-Net — eux répondent vraiment — et affiche les adresses attendues.
+Il teste l'interface configurée, cherche le boîtier USB et identifie son
+protocole (le modèle Enttec répond à une requête, les dongles simples restent
+muets — c'est la seule chose qu'une interface DMX renvoie), et affiche les
+adresses attendues. Il cherche aussi les boîtiers réseau, à ignorer si tu es
+en USB.
 
 Le même rapport est dans **Réglages → Vérifier mon installation**, avec un
 bouton *utiliser* à côté de chaque boîtier trouvé pour le configurer d'un clic.
@@ -211,8 +226,10 @@ lampe, exactement comme dans la notice.
 
 Symptômes courants :
 
-- **Rien ne s'allume** : shutter/dimmer sur le mauvais canal, ou adresse DMX
-  fausse, ou bouchon 120 Ω manquant.
+- **Rien ne s'allume** : commence par *Vérifier mon installation*. Si le boîtier
+  n'est pas détecté, c'est le pilote FTDI qui manque, ou un autre logiciel
+  (QLC+, une autre fenêtre beamctl) qui garde le port ouvert. Sinon : adresse
+  DMX fausse, shutter/dimmer sur le mauvais canal, ou bouchon 120 Ω manquant.
 - **Les têtes bougent par saccades** : câble micro utilisé à la place d'un câble
   DMX, ou pas de terminaison.
 - **Les deux lampes font exactement pareil** : elles ont la même adresse.
