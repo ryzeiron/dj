@@ -10,6 +10,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from . import diagnose
 from .effects import list_effects
 from .engine import Engine
 from .fixtures import COLOR_RGB
@@ -113,6 +114,11 @@ class Handler(BaseHTTPRequestHandler):
         engine = self.engine
         if path == "/api/status":
             return self._json(engine.status())
+        if path == "/api/diagnose":
+            discover = (query.get("discover") or ["1"])[0] != "0"
+            return self._json(diagnose.run(engine.show, discover=discover,
+                                           engine=engine))
+
         if path == "/api/show":
             show = engine.show
             return self._json({
@@ -234,6 +240,9 @@ class Handler(BaseHTTPRequestHandler):
                 engine.set_channel_override(int(body["address"]),
                                             None if value is None else int(value))
             return self._json({"overrides": engine.channel_overrides})
+
+        if path == "/api/lamptest":
+            return self._json({"test_fixture": engine.lamp_test(body.get("id") or None)})
 
         if path == "/api/save":
             show.save()

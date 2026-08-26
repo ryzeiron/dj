@@ -39,6 +39,7 @@ class Engine:
         self.live: dict = {}                    # temporary overrides from the UI
         self.channel_overrides: dict[int, int] = {}   # raw channels, for testing
         self.solo_fixture: str | None = None
+        self.test_fixture: str | None = None   # verification lampe par lampe
 
         self._frozen: dict[str, FixtureState] = {}
         self.last_states: list[FixtureState] = []
@@ -217,6 +218,15 @@ class Engine:
                 states = self.build_states(beats)
                 self._frozen = {f.id: s.copy() for f, s in zip(fixtures, states)}
 
+            if self.test_fixture:
+                # Verification : une seule lampe, blanc plein, tete au centre.
+                states = [
+                    FixtureState(pan=0.5, tilt=0.5, dimmer=1.0, color="blanc",
+                                 gobo="ouvert", speed=0.0)
+                    if fixture.id == self.test_fixture else FixtureState(dimmer=0.0)
+                    for fixture in fixtures
+                ]
+
             for fixture, state in zip(fixtures, states):
                 if self.blackout:
                     state.dimmer = 0.0
@@ -276,6 +286,13 @@ class Engine:
             self.live = {}
             return stored
 
+    def lamp_test(self, fixture_id: str | None) -> str | None:
+        """Light one lamp, white and centred, to check it answers its address."""
+        with self._lock:
+            known = {f.id for f in self.show.fixtures}
+            self.test_fixture = fixture_id if fixture_id in known else None
+            return self.test_fixture
+
     def surprise(self) -> dict:
         """Roll a new look on top of the current one. Pure fun button."""
         import random
@@ -333,6 +350,7 @@ class Engine:
                 "strobe": self.strobe_momentary,
                 "freeze": self.freeze,
                 "solo": self.solo_fixture,
+                "test_fixture": self.test_fixture,
                 "auto": self.auto_mode,
                 "output": self.output.describe(),
                 "output_error": self.output_error,

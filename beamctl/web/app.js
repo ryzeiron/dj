@@ -527,16 +527,19 @@ function renderPatch() {
        <label class="check"><input class="f-itilt" type="checkbox" ${fixture.invert_tilt ? "checked" : ""}> inverser haut/bas</label>
        <label class="check"><input class="f-on" type="checkbox" ${fixture.enabled ? "checked" : ""}> active</label>
        <div class="row">
-         <button class="mini f-solo">tester seule</button>
+         <button class="mini f-lamp">allumer</button>
          <button class="mini danger f-del">retirer</button>
        </div>`;
     fillSelect(item.querySelector(".f-profile"),
       (show.profiles || []).map((p) => ({ value: p.id, label: p.name })), fixture.profile_id);
     item.querySelector(".f-del").onclick = () => { show.fixtures.splice(index, 1); renderPatch(); };
-    item.querySelector(".f-solo").onclick = async () => {
-      const solo = status && status.solo === fixture.id ? null : fixture.id;
-      await api("/api/master", { solo });
+    const lampButton = item.querySelector(".f-lamp");
+    lampButton.classList.toggle("accent", status && status.test_fixture === fixture.id);
+    lampButton.onclick = async () => {
+      const testing = status && status.test_fixture === fixture.id;
+      await api("/api/lamptest", { id: testing ? null : fixture.id });
       await refreshStatus();
+      renderPatch();
     };
     item.dataset.id = fixture.id;
     list.appendChild(item);
@@ -578,6 +581,94 @@ function describeTestChannel(address) {
     }
   }
   return "aucune lampe sur ce canal";
+}
+
+/* ---------------------------------------------------------- diagnostic */
+/** `ok` vaut true, false, ou null pour une simple information. */
+function checkLine(ok, text) {
+  const kind = ok === null ? "info" : ok ? "good" : "bad";
+  const label = ok === null ? "info" : ok ? "OK" : "à corriger";
+  return `<div class="checkLine ${kind}"><b>${label}</b><span>${text}</span></div>`;
+}
+
+async function runDiagnose() {
+  const box = $("checkResult");
+  box.innerHTML = '<div class="item">Vérification en cours…</div>';
+  let report;
+  try {
+    report = await api("/api/diagnose");
+  } catch (e) {
+    box.innerHTML = `<div class="alert">Vérification impossible : ${e}</div>`;
+    return;
+  }
+
+  const blocks = [];
+
+  blocks.push(`<div class="item block"><h3>Interface DMX</h3>` +
+    checkLine(report.output.ok, report.output.detail) +
+    (report.driver === "dummy"
+      ? `<p class="hint">Aucune interface choisie : le logiciel tourne en simulation,
+         les vraies lampes ne reçoivent rien.</p>` : "") + `</div>`);
+
+  const ports = report.serial_ports || [];
+  const candidates = report.usb_candidates || [];
+  let usb = checkLine(report.pyserial.ok, report.pyserial.detail);
+  if (candidates.length) {
+    usb += checkLine(true, `${candidates.length} interface(s) USB-DMX reconnue(s)`);
+  } else if (ports.length) {
+    usb += checkLine(null, "aucun port ne ressemble à une interface DMX");
+  } else {
+    usb += checkLine(null, "aucun port série détecté");
+  }
+  usb += ports.map((port) =>
+    `<div class="portRow ${port.likely_dmx ? "hit" : ""}">
+       <code>${port.device}</code>
+       <span>${port.description || "sans description"}${port.why ? " — " + port.why : ""}</span>
+       ${port.likely_dmx ? `<button class="mini accent" data-usb="${port.device}">utiliser</button>` : ""}
+     </div>`).join("");
+  blocks.push(`<div class="item block"><h3>Boîtiers USB</h3>${usb}</div>`);
+
+  const nodes = (report.artnet_nodes || []).filter((n) => !n.error);
+  let network = nodes.length
+    ? checkLine(true, `${nodes.length} boîtier(s) Art-Net sur le réseau`)
+    : checkLine(null, "aucun boîtier réseau trouvé — normal si tu es en USB");
+  network += nodes.map((node) =>
+    `<div class="portRow hit">
+       <code>${node.ip}</code><span>${node.name} ${node.description || ""}</span>
+       <button class="mini accent" data-node="${node.ip}">utiliser</button>
+     </div>`).join("");
+  blocks.push(`<div class="item block"><h3>Boîtiers réseau</h3>${network}</div>`);
+
+  let lamps = (report.conflicts || []).length
+    ? report.conflicts.map((c) => checkLine(false, c)).join("")
+    : checkLine(true, "aucun chevauchement d'adresses");
+  lamps += (report.lamps || []).map((lamp) =>
+    `<div class="portRow">
+       <code>${lamp.address}–${lamp.last_address}</code>
+       <span>${lamp.name} · ${lamp.profile}${lamp.enabled ? "" : " (désactivée)"}</span>
+     </div>`).join("");
+  lamps += `<p class="hint">Ces adresses doivent être saisies à l'identique dans le
+     menu DMX de chaque lampe. Le logiciel ne peut pas les lire à distance.</p>`;
+  blocks.push(`<div class="item block"><h3>Adresses des lampes</h3>${lamps}</div>`);
+
+  box.innerHTML = blocks.join("");
+
+  box.querySelectorAll("[data-usb]").forEach((button) => {
+    button.onclick = async () => {
+      $("driver").value = "enttec";
+      $("serialPort").value = button.dataset.usb;
+      renderOutputFields();
+      $("applyOutput").click();
+    };
+  });
+  box.querySelectorAll("[data-node]").forEach((button) => {
+    button.onclick = async () => {
+      $("driver").value = "artnet";
+      $("host").value = button.dataset.node;
+      renderOutputFields();
+      $("applyOutput").click();
+    };
+  });
 }
 
 /* -------------------------------------------------------------- wizard */
@@ -889,6 +980,8 @@ function bindEvents() {
   $("testClear").onclick = () => api("/api/test", { clear: true }).then(() => {
     $("testInfo").textContent = "canaux relâchés";
   });
+
+  $("runCheck").onclick = runDiagnose;
 
   // assistant
   $("openWizard").onclick = openWizard;

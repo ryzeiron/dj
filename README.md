@@ -162,7 +162,35 @@ l'univers brut.
 En quittant avec Ctrl+C, le logiciel envoie une trame noire : les lampes
 s'éteignent proprement.
 
-## 6. Si les lampes ne font pas ce qu'il faut
+## 6. Vérifier que le branchement fonctionne
+
+**Important :** le DMX ne circule que dans un sens. Une lampe ne renvoie jamais
+rien, donc **aucun logiciel au monde ne peut « détecter » un BEAM 100**. Ce qui
+est vérifiable, c'est l'interface, le réseau, les adresses — et le fait qu'une
+lampe donnée s'allume quand on lui parle.
+
+En ligne de commande :
+
+```bash
+python -m beamctl --check
+```
+
+Il teste l'interface configurée, liste les ports USB en signalant ceux qui sont
+des interfaces DMX (puce FTDI), envoie un ArtPoll sur le réseau pour trouver les
+boîtiers Art-Net — eux répondent vraiment — et affiche les adresses attendues.
+
+Le même rapport est dans **Réglages → Vérifier mon installation**, avec un
+bouton *utiliser* à côté de chaque boîtier trouvé pour le configurer d'un clic.
+
+**Le seul vrai test des lampes** est visuel, lampe par lampe. Dans
+*Réglages → Mes lampes*, le bouton **allumer** met une seule lampe en blanc
+plein, tête au centre, et éteint toutes les autres :
+
+- la bonne lampe s'allume → son adresse est correcte ;
+- une autre lampe s'allume → tu as inversé deux adresses ;
+- rien ne s'allume → voir la section suivante.
+
+## 7. Si les lampes ne font pas ce qu'il faut
 
 Les BEAM 100 sont vendus sous beaucoup de marques et les tables de canaux
 varient. Les profils fournis (`beamctl/profiles/beam100_14ch.json` et
@@ -191,7 +219,7 @@ Symptômes courants :
 - **Pan et tilt inversés** entre les deux lampes : coche *inverser pan* dans le
   patch pour celle qui est en face (mode expert).
 
-## 7. Organisation du code
+## 8. Organisation du code
 
 | Fichier | Rôle |
 |---|---|
@@ -202,20 +230,23 @@ Symptômes courants :
 | `beamctl/beat.py` | horloge de temps, tap tempo |
 | `beamctl/engine.py` | boucle de rendu 40 images/seconde |
 | `beamctl/show.py` | patch, looks, sauvegarde `show.json` |
+| `beamctl/diagnose.py` | vérification : interface, ports USB, découverte Art-Net |
 | `beamctl/server.py` | serveur HTTP + API JSON |
 | `beamctl/web/` | interface : aperçu canvas, assistant, looks (sans framework) |
 
 Ta configuration est enregistrée dans `show.json` (avec une copie `.bak`) :
 sauvegarde-le, c'est toute ta soirée.
 
-## 8. Tests
+## 9. Tests
 
 ```bash
 python3 -m unittest discover -s tests
 ```
 
-## 9. Ce que ça ne fait pas (encore)
+## 10. Ce que ça ne fait pas (encore)
 
 - Pas de détection automatique du BPM par le micro : le tap tempo fait le job.
 - Pas de contrôleur MIDI/USB : tout passe par la page web et le clavier.
 - Un seul univers DMX (512 canaux, largement assez pour une trentaine de beams).
+- Pas de détection des lampes : le DMX est unidirectionnel, c'est une limite du
+  protocole, pas du logiciel.

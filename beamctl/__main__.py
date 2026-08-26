@@ -30,6 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fps", type=int, help="frequence de rafraichissement DMX")
     parser.add_argument("--list-serial", action="store_true",
                         help="lister les ports serie detectes puis quitter")
+    parser.add_argument("--check", action="store_true",
+                        help="verifier l'installation (interface, ports, reseau) puis quitter")
     parser.add_argument("--verbose", action="store_true", help="journal HTTP complet")
     parser.add_argument("--version", action="version", version=f"beamctl {__version__}")
     return parser
@@ -70,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
 
     show = Show(path=args.show)
     apply_cli_output(show, args)
+
+    if args.check:
+        from . import diagnose
+        print(diagnose.format_report(diagnose.run(show)))
+        return 0
+
     if args.fps:
         show.config["fps"] = args.fps
 

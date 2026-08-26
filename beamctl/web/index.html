@@ -159,6 +159,19 @@
     <label class="check"><input id="expertToggle" type="checkbox"> activer</label>
   </div>
 
+  <div class="panel simple">
+    <div>
+      <h3>Vérifier mon installation</h3>
+      <p class="hint">Teste l'interface DMX, liste les boîtiers USB branchés et
+        cherche les boîtiers réseau. À savoir : le DMX ne circule que dans un sens,
+        les lampes ne répondent jamais — aucun logiciel ne peut donc « détecter »
+        un BEAM 100. Pour vérifier qu'une lampe est bien à son adresse, utilise
+        <b>allumer</b> sur la lampe, plus bas.</p>
+    </div>
+    <button id="runCheck" class="mini accent">lancer la vérification</button>
+  </div>
+  <div id="checkResult" class="list"></div>
+
   <h2>Interface DMX</h2>
   <div class="panel">
     <div class="field">

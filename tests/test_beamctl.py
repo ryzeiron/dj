@@ -3,13 +3,16 @@
 import json
 import unittest.mock
 import os
+import socket
 import struct
 import sys
+import threading
 import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from beamctl import diagnose
 from beamctl.beat import BeatClock
 from beamctl.dmx import Universe
 from beamctl.effects import EFFECTS, EffectContext, apply_effect, sample_path
@@ -378,6 +381,145 @@ class TestEngine(unittest.TestCase):
         self.engine.clock.set_bpm(200)
         self.engine.render(now=10.0)
         self.assertEqual(self.engine.universe.get(1), first)
+
+
+class FakeArtNetNode(threading.Thread):
+    """Un boitier Art-Net qui repond a un ArtPoll, comme le vrai materiel."""
+
+    daemon = True
+
+    def __init__(self, port: int) -> None:
+        super().__init__()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(("127.0.0.1", port))
+        self.sock.settimeout(4)
+        self.polled = False
+
+    @staticmethod
+    def reply() -> bytes:
+        packet = b"Art-Net\x00" + struct.pack("<H", 0x2100)
+        packet += bytes([192, 168, 1, 50]) + struct.pack("<H", 0x1936)
+        packet += bytes([0, 14, 0, 3, 0, 0, 0, 0xD0, 0, 0])
+        packet += b"BeamBox".ljust(18, b"\x00")
+        packet += b"Boitier Art-Net".ljust(64, b"\x00")
+        return packet.ljust(239, b"\x00")
+
+    def run(self) -> None:
+        try:
+            data, address = self.sock.recvfrom(2048)
+        except socket.timeout:
+            return
+        if data.startswith(b"Art-Net\x00") and struct.unpack("<H", data[8:10])[0] == 0x2000:
+            self.polled = True
+            self.sock.sendto(self.reply(), address)
+
+    def close(self) -> None:
+        self.sock.close()
+
+
+class TestDiagnostics(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+
+    def test_poll_packet_is_valid_artnet(self):
+        packet = diagnose.poll_packet()
+        self.assertTrue(packet.startswith(b"Art-Net\x00"))
+        self.assertEqual(struct.unpack("<H", packet[8:10])[0], 0x2000)
+        self.assertEqual(struct.unpack(">H", packet[10:12])[0], 14)
+
+    def test_discovers_a_node_that_answers(self):
+        node = FakeArtNetNode(port=6455)
+        node.start()
+        try:
+            found = diagnose.discover_artnet(timeout=2.0, listen_port=6456,
+                                             target_port=6455, broadcast="127.0.0.1")
+        finally:
+            node.join(timeout=3)
+            node.close()
+        self.assertTrue(node.polled, "le boitier n'a pas recu l'ArtPoll")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["ip"], "192.168.1.50")
+        self.assertEqual(found[0]["name"], "BeamBox")
+
+    def test_silence_gives_an_empty_list(self):
+        found = diagnose.discover_artnet(timeout=0.4, listen_port=6457,
+                                         target_port=6458, broadcast="127.0.0.1")
+        self.assertEqual(found, [])
+
+    def test_garbage_is_not_taken_for_a_node(self):
+        self.assertIsNone(diagnose._parse_poll_reply(b"pas de l'art-net", "1.2.3.4"))
+        self.assertIsNone(diagnose._parse_poll_reply(b"Art-Net\x00" + b"\x00" * 200, "1.2.3.4"))
+
+    def test_probe_reports_a_working_output(self):
+        result = diagnose.probe_output({"driver": "artnet", "host": "127.0.0.1"})
+        self.assertTrue(result["ok"], result["detail"])
+
+    def test_probe_reports_a_broken_output(self):
+        result = diagnose.probe_output({"driver": "opendmx", "port": "/dev/ttyABSENT"})
+        self.assertFalse(result["ok"])
+        self.assertIn("ttyABSENT", result["detail"])
+
+    def test_running_engine_is_trusted_over_a_second_probe(self):
+        """Le port USB ne s'ouvre pas deux fois : on lit l'etat du moteur."""
+        engine = Engine(self.show, output=DummyOutput())
+        self.show.config["output"] = {"driver": "opendmx", "port": "/dev/ttyABSENT"}
+        report = diagnose.run(self.show, discover=False, engine=engine)
+        self.assertTrue(report["output"]["ok"])
+        engine.output_error = "sortie : cable debranche"
+        report = diagnose.run(self.show, discover=False, engine=engine)
+        self.assertFalse(report["output"]["ok"])
+        self.assertIn("debranche", report["output"]["detail"])
+
+    def test_report_lists_the_patch(self):
+        report = diagnose.run(self.show, discover=False)
+        self.assertEqual(len(report["lamps"]), 2)
+        self.assertEqual(report["lamps"][0]["address"], 1)
+        self.assertEqual(report["lamps"][1]["address"], 15)
+        self.assertTrue(report["lamps"][0]["known_profile"])
+        self.assertIn("driver", report)
+
+    def test_report_formats_as_text(self):
+        text = diagnose.format_report(diagnose.run(self.show, discover=False))
+        self.assertIn("Diagnostic beamctl", text)
+        self.assertIn("Beam 1 : canaux 1-14", text)
+        self.assertIn("sens", text)          # le rappel sur le DMX unidirectionnel
+
+
+class TestLampTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+        self.engine = Engine(self.show, output=DummyOutput())
+
+    def test_lights_only_the_tested_lamp(self):
+        self.engine.lamp_test("f2")
+        self.engine.render(now=0.0)
+        self.assertEqual(self.engine.universe.get(6), 0)      # lampe 1 eteinte
+        self.assertEqual(self.engine.universe.get(20), 255)   # lampe 2 pleine
+        self.assertEqual(self.engine.universe.get(22), 0)     # blanc
+        self.assertEqual(self.engine.universe.get(15), 128)   # tete centree
+
+    def test_stopping_the_test_gives_the_show_back(self):
+        self.engine.activate_look("l12")
+        self.engine.lamp_test("f1")
+        self.engine.render(now=0.0)
+        self.assertEqual(self.engine.universe.get(20), 0)
+        self.engine.lamp_test(None)
+        self.engine.render(now=0.0)
+        self.assertEqual(self.engine.universe.get(20), 255)
+
+    def test_unknown_lamp_is_refused(self):
+        self.assertIsNone(self.engine.lamp_test("nexiste-pas"))
+
+    def test_blackout_still_wins(self):
+        """Le blackout coupe la lumiere ; les tetes gardent leur position."""
+        self.engine.lamp_test("f1")
+        self.engine.blackout = True
+        self.engine.render(now=0.0)
+        self.assertEqual(self.engine.universe.get(6), 0)      # dimmer
+        self.assertEqual(self.engine.universe.get(7), 0)      # shutter ferme
 
 
 class TestOutputPackets(unittest.TestCase):
