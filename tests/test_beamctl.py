@@ -1,5 +1,6 @@
 """Tests unitaires : `python3 -m unittest discover tests`."""
 
+import builtins
 import json
 import unittest.mock
 import os
@@ -578,6 +579,23 @@ class TestUsbDetection(unittest.TestCase):
         driver = output.identify_interface(widget.port, timeout=0.5)
         widget.join(timeout=2)
         self.assertEqual(driver, "opendmx")
+
+    def test_missing_pyserial_says_so_instead_of_blaming_the_hardware(self):
+        """Sans pyserial on ne peut pas voir les ports : il faut le dire."""
+        real_import = builtins.__import__
+
+        def no_serial(name, *args, **kwargs):
+            if name == "serial" or name.startswith("serial."):
+                raise ImportError("pas de pyserial")
+            return real_import(name, *args, **kwargs)
+
+        with unittest.mock.patch.object(builtins, "__import__", no_serial):
+            with self.assertRaises(RuntimeError) as caught:
+                output.create_output({"driver": "usb"})
+        message = str(caught.exception)
+        self.assertIn("pyserial", message)
+        self.assertIn("pip install", message)
+        self.assertNotIn("branche", message)
 
     def test_usb_driver_refuses_to_guess_when_nothing_is_plugged(self):
         with unittest.mock.patch.object(output, "serial_candidates", return_value=[]):

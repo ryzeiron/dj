@@ -45,7 +45,10 @@ def list_serial_ports() -> int:
     try:
         from serial.tools import list_ports  # type: ignore
     except ImportError:
-        print("pyserial n'est pas installe : pip install pyserial")
+        print("pyserial n'est pas installe.")
+        print("  Windows      : py -m pip install pyserial")
+        print("  macOS/Linux  : python3 -m pip install pyserial")
+        print("Relance ensuite cette commande.")
         return 1
     ports = list(list_ports.comports())
     if not ports:

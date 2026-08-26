@@ -299,6 +299,14 @@ def create_output(config: dict) -> Output:
     cfg = dict(config or {})
     driver = str(cfg.pop("driver", "dummy")).lower()
     if driver == "usb":
+        try:
+            import serial  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "pyserial n'est pas installe, impossible de chercher le boitier USB. "
+                "Lance `py -m pip install pyserial` (Windows) ou "
+                "`python3 -m pip install pyserial`, puis relance beamctl."
+            ) from None
         found = find_usb_interface()
         if not found:
             raise RuntimeError(
