@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="lister les ports serie detectes puis quitter")
     parser.add_argument("--check", action="store_true",
                         help="verifier l'installation (interface, ports, reseau) puis quitter")
+    parser.add_argument("--open", action="store_true", dest="open_browser",
+                        help="ouvrir l'interface dans le navigateur au demarrage")
     parser.add_argument("--verbose", action="store_true", help="journal HTTP complet")
     parser.add_argument("--version", action="version", version=f"beamctl {__version__}")
     return parser
@@ -105,6 +107,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  telephone  : http://{lan_ip()}:{args.port}/{suffix}")
     print()
     print("Ctrl+C pour arreter (les lampes sont eteintes en sortant).")
+
+    if args.open_browser:
+        import webbrowser
+        try:
+            webbrowser.open(f"http://127.0.0.1:{args.port}/{suffix}")
+        except Exception:
+            pass                      # pas de navigateur : ce n'est pas bloquant
 
     stopping = False
 

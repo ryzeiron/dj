@@ -57,18 +57,64 @@ Sur Windows, le boîtier doit apparaître comme un port COM dans le gestionnaire
 de périphériques. Si ce n'est pas le cas, installe le **pilote VCP FTDI**
 (ftdichip.com) — c'est le cas le plus fréquent de boîtier non détecté.
 
-## 2. Installation
+## 2. Installation locale
+
+### Windows
+
+1. **Python** — <https://www.python.org/downloads/>, et pendant l'installation
+   **coche « Add python.exe to PATH »**. Si `python` ouvre le Microsoft Store :
+   *Paramètres → Applications → Paramètres avancés → Alias d'exécution* et
+   désactive `python.exe` et `python3.exe`. Ferme et rouvre le terminal.
+2. **Le code**
+   ```powershell
+   git clone -b claude/beam-100-lighting-software-bbvzbl https://github.com/ryzeiron/dj.git
+   cd dj
+   ```
+   Sans git : bouton **Code → Download ZIP** sur la page de la branche, puis dézippe.
+3. **pyserial**, pour l'USB
+   ```powershell
+   py -m pip install pyserial
+   ```
+4. **Lancer** — double-clique `beamctl.bat`, ou :
+   ```powershell
+   py -m beamctl --output usb --open
+   ```
+
+### macOS / Linux
 
 ```bash
-git clone https://github.com/ryzeiron/dj.git
+git clone -b claude/beam-100-lighting-software-bbvzbl https://github.com/ryzeiron/dj.git
 cd dj
-python3 -m beamctl            # démarre en mode simulation
+python3 -m pip install pyserial
+./beamctl.sh
 ```
 
-Puis ouvre <http://127.0.0.1:8080>. Le lien pour le téléphone est affiché au
-démarrage. **L'assistant s'ouvre tout seul au premier lancement** : combien de
-lampes, quel mode de canaux, quelle interface — et il te donne les adresses DMX
-à saisir sur chaque BEAM.
+### Ce que tu dois voir
+
+```
+beamctl 1.0.0 — show : .../show.json
+sortie DMX : Enttec DMX USB Pro sur COM3
+lampes     : 2
+
+  ordinateur : http://127.0.0.1:8080/
+  telephone  : http://192.168.x.x:8080/
+```
+
+Si la ligne dit `aucune sortie (mode simulation)`, le boîtier n'a pas été
+trouvé : le logiciel démarre quand même, tu peux tout préparer, mais rien ne
+part vers les lampes. Voir la section 6.
+
+Tout tourne sur ta machine : aucun compte, aucun serveur distant, aucune
+connexion Internet nécessaire une fois le code téléchargé.
+
+### Mettre à jour plus tard
+
+```bash
+git pull
+```
+
+Ton fichier `show.json` (lampes, looks, tracés) n'est pas suivi par git : il
+reste intact.
 
 ## 3. Adresser les lampes
 
