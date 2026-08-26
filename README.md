@@ -80,6 +80,30 @@ de périphériques. Si ce n'est pas le cas, installe le **pilote VCP FTDI**
    py -m beamctl --output usb --open
    ```
 
+#### Si Windows bloque l'installation
+
+« Le chargement d'une version test est bloqué par la stratégie » vient de la
+règle Windows sur les applications du Store (paquets MSIX). Elle ne concerne
+pas l'installateur classique.
+
+- **N'utilise ni `winget` ni le Microsoft Store.** Prends le fichier
+  *Windows installer (64-bit)* sur python.org : c'est un `.exe` ordinaire.
+- **Pas les droits administrateur ?** Dans l'installateur, clique
+  *Customize installation*, puis à l'étape suivante **décoche « Install for all
+  users »**. Python s'installe alors dans ton profil, sans admin.
+- **PC verrouillé par une organisation ?** Utilise le **Python portable** :
+  télécharge *Windows embeddable package (64-bit)* sur python.org, dézippe-le
+  dans un dossier `python` à l'intérieur de `dj`, ouvre
+  `dj\python\python313._pth` avec le Bloc-notes et ajoute une ligne `..` à la
+  fin. Ensuite, depuis `dj` :
+  ```powershell
+  .\python\python.exe run.py --output usb --open
+  ```
+  Aucune installation, donc aucune stratégie à contourner. Pour l'USB il faut
+  aussi pyserial : télécharge `get-pip.py` (bootstrap.pypa.io/get-pip.py), puis
+  `.\python\python.exe get-pip.py` et
+  `.\python\python.exe -m pip install pyserial`.
+
 ### macOS / Linux
 
 ```bash
@@ -88,6 +112,9 @@ cd dj
 python3 -m pip install pyserial
 ./beamctl.sh
 ```
+
+`python3 run.py` fait la même chose que `python3 -m beamctl`, et fonctionne
+depuis n'importe quel dossier.
 
 ### Ce que tu dois voir
 
