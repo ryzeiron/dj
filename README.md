@@ -52,8 +52,13 @@ COM5 le lendemain).
 |---|---|---|---|
 | **Eurolite USB-DMX512 PRO MK2** | ~100 € | Enttec Pro | **le meilleur rapport qualité/prix**, sortie XLR isolée |
 | Enttec DMX USB Pro | ~180-200 € | Enttec Pro | la référence du métier |
-| Enttec Open DMX USB | ~77 € | Open DMX (FTDI) | le timing dépend du PC : scintillements possibles sous Windows |
-| Clone FTDI AliExpress / Amazon | 20-35 € | variable | loterie : puces FTDI contrefaites fréquentes |
+| Enttec Open DMX USB | ~77 € | Open DMX (FTDI) | le timing dépend du PC |
+| Câble USB-DMX **à puce FT232R / FT232RNL** | 20-35 € | Open DMX (FTDI) | fonctionne si la puce FTDI est annoncée noir sur blanc |
+| Boîtier sans puce annoncée | < 20 € | inconnu | loterie : puces FTDI contrefaites fréquentes |
+
+Avec un boîtier Open DMX, c'est l'ordinateur qui génère le timing : beamctl
+limite alors automatiquement la cadence à 30 images par seconde, pour garder
+une marge et éviter le scintillement. Rien à régler.
 
 Les trois premiers sont reconnus automatiquement par `--output usb`. Préfère un
 boîtier **protocole Enttec Pro** : c'est le boîtier qui génère le timing DMX,

@@ -98,10 +98,15 @@ class Engine:
         except Exception:
             pass
 
+    def effective_fps(self) -> int:
+        """The show rate, lowered when the interface cannot sustain it."""
+        ceiling = getattr(self.output, "max_fps", None)
+        return min(self.fps, ceiling) if ceiling else self.fps
+
     def _run(self) -> None:
-        period = 1.0 / max(1, self.fps)
         next_frame = time.monotonic()
         while not self._stop.is_set():
+            period = 1.0 / max(1, self.effective_fps())
             now = time.monotonic()
             try:
                 self.render(now)

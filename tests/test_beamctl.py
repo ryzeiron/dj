@@ -689,6 +689,36 @@ class TestUsbDetection(unittest.TestCase):
         self.assertTrue(ordered[0]["likely_dmx"])
 
 
+class TestFrameRate(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+
+    def test_normal_output_keeps_the_configured_rate(self):
+        engine = Engine(self.show, output=DummyOutput())
+        self.assertEqual(engine.effective_fps(), engine.fps)
+
+    def test_open_dmx_is_capped(self):
+        class SlowOutput(DummyOutput):
+            max_fps = 30
+
+        engine = Engine(self.show, output=SlowOutput())
+        self.assertEqual(engine.effective_fps(), 30)
+
+    def test_a_lower_setting_still_wins(self):
+        class SlowOutput(DummyOutput):
+            max_fps = 30
+
+        self.show.config["fps"] = 20
+        engine = Engine(self.show, output=SlowOutput())
+        self.assertEqual(engine.effective_fps(), 20)
+
+    def test_the_open_dmx_driver_declares_its_ceiling(self):
+        self.assertEqual(output.OpenDmxOutput.max_fps, 30)
+        self.assertIsNone(output.EnttecProOutput.max_fps)
+        self.assertIsNone(output.ArtNetOutput.max_fps)
+
+
 class TestOutputPackets(unittest.TestCase):
     def test_artnet_header(self):
         output = ArtNetOutput(host="127.0.0.1", universe=3)
