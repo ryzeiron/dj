@@ -48,10 +48,26 @@ Le logiciel cherche le boîtier, reconnaît tout seul son protocole et s'y
 connecte — y compris quand Windows lui change son numéro de port (COM3 un soir,
 COM5 le lendemain).
 
-| Type | Exemples | Choix dans le logiciel |
-|---|---|---|
-| **USB → DMX** | Enttec DMX USB Pro, Open DMX USB, dongles FTDI à ~20 € | **`usb`** (détection automatique) |
-| Réseau → DMX | boîtiers Art-Net ou sACN | `artnet` / `sacn`, si un jour tu en veux |
+| Boîtier | Prix indicatif | Protocole | Remarque |
+|---|---|---|---|
+| **Eurolite USB-DMX512 PRO MK2** | ~100 € | Enttec Pro | **le meilleur rapport qualité/prix**, sortie XLR isolée |
+| Enttec DMX USB Pro | ~180-200 € | Enttec Pro | la référence du métier |
+| Enttec Open DMX USB | ~77 € | Open DMX (FTDI) | le timing dépend du PC : scintillements possibles sous Windows |
+| Clone FTDI AliExpress / Amazon | 20-35 € | variable | loterie : puces FTDI contrefaites fréquentes |
+
+Les trois premiers sont reconnus automatiquement par `--output usb`. Préfère un
+boîtier **protocole Enttec Pro** : c'est le boîtier qui génère le timing DMX,
+pas l'ordinateur, donc pas de scintillement si le PC rame en pleine soirée.
+
+**À fuir** : les boîtiers vendus avec le logiciel d'une marque précise
+(Nicolaudie / Sunlite / Daslight, SUSHI, SIUDI…). Ils utilisent un protocole
+proprietaire et ne fonctionnent qu'avec le logiciel du fabricant — ni beamctl,
+ni QLC+, ni FreeStyler ne peuvent les piloter.
+
+| Type | Choix dans le logiciel |
+|---|---|
+| **USB → DMX** | **`usb`** (détection automatique) |
+| Réseau → DMX | `artnet` / `sacn`, si un jour tu en veux |
 
 Sur Windows, le boîtier doit apparaître comme un port COM dans le gestionnaire
 de périphériques. Si ce n'est pas le cas, installe le **pilote VCP FTDI**

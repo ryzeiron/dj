@@ -25,12 +25,17 @@ from beamctl.output import ArtNetOutput, DummyOutput, SacnOutput
 from beamctl.show import Look, Show
 
 
-def _pyserial_available() -> bool:
+def _pyserial_installed() -> bool:
     try:
         import serial  # noqa: F401
     except ImportError:
         return False
-    return hasattr(os, "openpty")
+    return True
+
+
+def _pyserial_available() -> bool:
+    """pyserial plus les pseudo-terminaux, pour simuler un boitier."""
+    return _pyserial_installed() and hasattr(os, "openpty")
 
 
 class TestUniverse(unittest.TestCase):
@@ -467,6 +472,7 @@ class TestDiagnostics(unittest.TestCase):
         result = diagnose.probe_output({"driver": "artnet", "host": "127.0.0.1"})
         self.assertTrue(result["ok"], result["detail"])
 
+    @unittest.skipUnless(_pyserial_installed(), "pyserial indisponible")
     def test_probe_reports_a_broken_output(self):
         result = diagnose.probe_output({"driver": "opendmx", "port": "/dev/ttyABSENT"})
         self.assertFalse(result["ok"])
