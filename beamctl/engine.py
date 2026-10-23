@@ -6,12 +6,32 @@ import threading
 import time
 from dataclasses import asdict
 
+from dataclasses import dataclass as _dataclass
+
 from .beat import BeatClock
 from .dmx import Universe
 from .effects import EffectContext, apply_effect
 from .fixtures import COLOR_RGB, FixtureState
 from .output import Output, create_output, DummyOutput
 from .show import Look, Show
+
+
+@_dataclass
+class PendingCommand:
+    """A DMX value held on one channel for a while, then released."""
+
+    address: int
+    value: int
+    starts_at: float
+    ends_at: float
+    fixture: str
+    name: str
+
+    def active(self, now: float) -> bool:
+        return self.starts_at <= now < self.ends_at
+
+    def done(self, now: float) -> bool:
+        return now >= self.ends_at
 
 
 class Engine:
@@ -40,6 +60,7 @@ class Engine:
         self.channel_overrides: dict[int, int] = {}   # raw channels, for testing
         self.solo_fixture: str | None = None
         self.test_fixture: str | None = None   # verification lampe par lampe
+        self._commands: list[PendingCommand] = []   # amorcages et resets en cours
 
         self._frozen: dict[str, FixtureState] = {}
         self.last_states: list[FixtureState] = []
@@ -245,6 +266,11 @@ class Engine:
                         state.dimmer = max(state.dimmer, self.master_dimmer)
                 fixture.render(state, self.universe)
 
+            self._commands = [c for c in self._commands if not c.done(now)]
+            for command in self._commands:
+                if command.active(now):
+                    self.universe.set(command.address, command.value)
+
             for address, value in self.channel_overrides.items():
                 self.universe.set(address, value)
 
@@ -290,6 +316,68 @@ class Engine:
             stored = self.show.upsert_look(data)
             self.live = {}
             return stored
+
+    #: a strike draws a surge, so several lamps are lit one after the other
+    STRIKE_STAGGER = 2.0
+
+    def available_commands(self) -> list[dict]:
+        """Commands the patched fixtures understand, merged for the UI."""
+        merged: dict[str, dict] = {}
+        for fixture in self.show.sorted_fixtures():
+            if fixture.profile is None:
+                continue
+            for name, spec in fixture.profile.commands.items():
+                merged.setdefault(name, {
+                    "name": name,
+                    "label": spec.get("label", name),
+                    "hold": float(spec.get("hold", 3.0)),
+                })
+        return list(merged.values())
+
+    def run_command(self, name: str, fixture_id: str | None = None,
+                    now: float | None = None) -> list[dict]:
+        """Send a timed command — striking a lamp, resetting a head.
+
+        Lamps are staggered: striking a whole rig at once draws a current
+        surge that trips breakers and shortens lamp life.
+        """
+        now = time.monotonic() if now is None else now
+        scheduled = []
+        with self._lock:
+            targets = [f for f in self.show.sorted_fixtures()
+                       if fixture_id is None or f.id == fixture_id]
+            stagger = self.STRIKE_STAGGER if name == "lamp_on" else 0.0
+            step = 0
+            for fixture in targets:
+                if fixture.profile is None or not fixture.enabled:
+                    continue
+                spec = fixture.profile.commands.get(name)
+                if not spec or not spec.get("channel"):
+                    continue
+                starts = now + step * stagger
+                hold = float(spec.get("hold", 3.0))
+                self._commands.append(PendingCommand(
+                    address=fixture.address + int(spec["channel"]) - 1,
+                    value=max(0, min(255, int(spec.get("value", 0)))),
+                    starts_at=starts,
+                    ends_at=starts + hold,
+                    fixture=fixture.id,
+                    name=name,
+                ))
+                scheduled.append({"fixture": fixture.name, "name": name,
+                                  "delay": round(starts - now, 1),
+                                  "hold": hold})
+                step += 1
+        return scheduled
+
+    def command_progress(self, now: float | None = None) -> list[dict]:
+        now = time.monotonic() if now is None else now
+        return [
+            {"fixture": c.fixture, "name": c.name,
+             "remaining": round(max(0.0, c.ends_at - now), 1),
+             "running": c.active(now)}
+            for c in self._commands if not c.done(now)
+        ]
 
     def lamp_test(self, fixture_id: str | None) -> str | None:
         """Light one lamp, white and centred, to check it answers its address."""
@@ -356,6 +444,7 @@ class Engine:
                 "freeze": self.freeze,
                 "solo": self.solo_fixture,
                 "test_fixture": self.test_fixture,
+                "commands": self.command_progress(),
                 "auto": self.auto_mode,
                 "output": self.output.describe(),
                 "output_error": self.output_error,

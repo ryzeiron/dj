@@ -171,6 +171,37 @@ git pull
 Ton fichier `show.json` (lampes, looks, tracés) n'est pas suivi par git : il
 reste intact.
 
+## 2 bis. Projecteurs à lampe à décharge (MAC 250 et compagnie)
+
+Tes BEAM 100 sont des LED : elles éclairent dès qu'on monte l'intensité. Un
+**Martin MAC 250**, comme la plupart des têtes au-dessus de 200 W, a une
+**lampe à décharge** : elle doit être **amorcée** par une commande DMX avant de
+pouvoir éclairer. Tant qu'elle n'est pas amorcée, la tête obéit — elle bouge,
+change de couleur — mais reste noire.
+
+Le profil `mac250_krypton_14ch` (mode 16 bits, 14 canaux, manuel commun
+Krypton/Entour) est fourni. Dans **Réglages**, un panneau *Lampes à décharge*
+apparaît dès qu'un projecteur de ce type est patché :
+
+| Bouton | Ce qu'il envoie |
+|---|---|
+| Allumer la lampe | canal 1 à 232 pendant 4 s |
+| Éteindre la lampe | canal 1 à 252 pendant 4 s |
+| Reset de la tête | canal 1 à 212 pendant 6 s |
+
+Les lampes sont amorcées **l'une après l'autre**, à deux secondes d'intervalle :
+une amorce tire un fort appel de courant, et les allumer toutes ensemble fait
+sauter les disjoncteurs.
+
+Deux réglages à vérifier dans le menu du projecteur :
+
+- **dLOF** doit être sur ON pour que l'extinction par DMX fonctionne
+- **dRES** doit être sur 5 SEC pour que le reset par DMX fonctionne
+
+Attention si tu écris un profil toi-même : sur un MAC 250, les valeurs hautes
+du canal 1 ne sont pas « un shutter plus ouvert » mais des commandes de
+maintenance — 255 **éteint la lampe**. Le shutter ouvert est à 30.
+
 ## 3. Adresser les lampes
 
 L'assistant fait ce calcul pour toi, mais voici la règle. Sur chaque BEAM 100,

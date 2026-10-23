@@ -63,6 +63,18 @@ class Profile:
         return value if isinstance(value, dict) else None
 
     @property
+    def commands(self) -> dict:
+        """Timed DMX commands: striking a discharge lamp, resetting a head.
+
+        LED fixtures light as soon as the dimmer opens. A discharge lamp — the
+        MAC 250 family, and most moving heads above 200 W — has to be struck
+        first by holding a value on its shutter channel for a few seconds.
+        Without that the head answers the desk and stays dark.
+        """
+        block = self.data.get("commands")
+        return block if isinstance(block, dict) else {}
+
+    @property
     def colors(self) -> list[str]:
         block = self.block("color")
         return list(block.get("slots", {})) if block else []
@@ -101,9 +113,11 @@ class Profile:
 
         speed = self.block("speed")
         if speed:
-            value = state.speed * 255
+            # `max` matters: on a MAC 250 the top of this channel is reserved
+            # for "blackout while moving", not for a slower move.
+            value = state.speed * speed.get("max", 255)
             if speed.get("invert"):
-                value = 255 - value
+                value = speed.get("max", 255) - value
             put(speed.get("channel"), value)
 
         dimmer = self.block("dimmer")

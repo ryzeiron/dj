@@ -563,6 +563,26 @@ function collectPatch() {
   }));
 }
 
+function renderCommands() {
+  const commands = show.commands || [];
+  $("lampCommands").classList.toggle("hidden", commands.length === 0);
+  const box = $("commandButtons");
+  box.innerHTML = "";
+  commands.forEach((command) => {
+    const button = document.createElement("button");
+    button.className = "mini" + (command.name === "lamp_on" ? " accent" : "");
+    button.textContent = command.label;
+    button.onclick = async () => {
+      const sent = await api("/api/command", { name: command.name });
+      const count = (sent.scheduled || []).length;
+      $("commandStatus").textContent = count
+        ? `${command.label} : ${count} projecteur(s) en cours…`
+        : "aucun projecteur concerné";
+    };
+    box.appendChild(button);
+  });
+}
+
 function renderOutputFields() {
   const driver = $("driver").value;
   const network = driver === "artnet" || driver === "sacn";
@@ -729,6 +749,11 @@ async function refreshStatus() {
     dot.classList.toggle("on", i === beat));
   document.querySelectorAll("[data-auto]").forEach((button) =>
     button.classList.toggle("on", (button.dataset.auto || "") === (status.auto || "")));
+  const running = (status.commands || []).filter((c) => c.running);
+  if (running.length) {
+    $("commandStatus").textContent =
+      `commande en cours sur ${running.length} projecteur(s), ${running[0].remaining} s restantes`;
+  }
   alertBox(status.output_error);
   if (expert && !$("page-setup").classList.contains("hidden")) renderDmx();
   if (refreshStatus.lastLook !== status.active_look_id) {
@@ -746,6 +771,7 @@ async function reload() {
   syncControls();
   renderLookEditor();
   renderPatch();
+  renderCommands();
   const output = show.config.output || {};
   $("driver").value = output.driver || "dummy";
   $("host").value = output.host || "";

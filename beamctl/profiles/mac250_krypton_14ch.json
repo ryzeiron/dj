@@ -1,0 +1,47 @@
+{
+  "id": "mac250_krypton_14ch",
+  "name": "Martin MAC 250 Krypton / Entour — 16 bits, 14 canaux",
+  "footprint": 14,
+  "note": "Table relevee sur la definition Open Fixture Library du MAC 250 Krypton (manuel commun Krypton/Entour). ATTENTION : lampe a decharge, elle doit etre amorcee par la commande 'Allumer la lampe' avant de pouvoir eclairer.",
+  "lamp": "decharge",
+  "shutter": {"channel": 1, "closed": 0, "open": 30, "strobe_min": 50, "strobe_max": 72, "strobe_hz_max": 20},
+  "dimmer": {"channel": 2, "min": 0, "max": 255},
+  "color": {
+    "channel": 3,
+    "slots": {
+      "blanc": 150,
+      "cyan": 161,
+      "jaune": 165,
+      "bleu": 169,
+      "rose": 173,
+      "vert": 177,
+      "rouge": 185,
+      "orange": 197,
+      "violet": 205,
+      "arc-en-ciel": 215
+    }
+  },
+  "gobo": {
+    "channel": 4,
+    "slots": {
+      "ouvert": 2,
+      "eclipse": 7,
+      "barre": 13,
+      "eventail": 18,
+      "happy yins": 23,
+      "triangle": 28,
+      "splash": 33,
+      "affobet": 39
+    }
+  },
+  "focus": {"channel": 7},
+  "prism": {"channel": 8, "off": 0, "on": 120},
+  "pan": {"coarse": 9, "fine": 10, "range_deg": 540},
+  "tilt": {"coarse": 11, "fine": 12, "range_deg": 257},
+  "speed": {"channel": 13, "max": 242},
+  "commands": {
+    "lamp_on": {"channel": 1, "value": 232, "hold": 4, "label": "Allumer la lampe (amorcage)"},
+    "lamp_off": {"channel": 1, "value": 252, "hold": 4, "label": "Eteindre la lampe"},
+    "reset": {"channel": 1, "value": 212, "hold": 6, "label": "Reset de la tete"}
+  }
+}

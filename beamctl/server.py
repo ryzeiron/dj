@@ -129,6 +129,7 @@ class Handler(BaseHTTPRequestHandler):
                 "effects": list_effects(),
                 "colors": list(COLOR_RGB),
                 "conflicts": show.patch_conflicts(),
+                "commands": engine.available_commands(),
                 "path": show.path,
             })
         return self._json({"error": "route inconnue"}, 404)
@@ -240,6 +241,12 @@ class Handler(BaseHTTPRequestHandler):
                 engine.set_channel_override(int(body["address"]),
                                             None if value is None else int(value))
             return self._json({"overrides": engine.channel_overrides})
+
+        if path == "/api/command":
+            name = str(body.get("name", ""))
+            if not any(c["name"] == name for c in engine.available_commands()):
+                return self._json({"error": f"commande inconnue : {name}"}, 400)
+            return self._json({"scheduled": engine.run_command(name, body.get("id") or None)})
 
         if path == "/api/lamptest":
             return self._json({"test_fixture": engine.lamp_test(body.get("id") or None)})

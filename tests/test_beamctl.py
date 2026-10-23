@@ -689,6 +689,132 @@ class TestUsbDetection(unittest.TestCase):
         self.assertTrue(ordered[0]["likely_dmx"])
 
 
+class TestMac250(unittest.TestCase):
+    """Le MAC 250 est une lampe a decharge : les valeurs hautes du canal 1
+    sont des commandes de maintenance, pas un shutter plus ouvert."""
+
+    def setUp(self):
+        self.library = ProfileLibrary()
+        self.profile = self.library.get("mac250_krypton_14ch")
+        self.universe = Universe()
+
+    def test_profile_loads(self):
+        self.assertIsNotNone(self.profile)
+        self.assertEqual(self.profile.footprint, 14)
+        self.assertEqual(self.profile.data.get("lamp"), "decharge")
+
+    def test_shutter_never_reaches_the_lamp_off_command(self):
+        for dimmer in (0.0, 0.5, 1.0):
+            for strobe in (0.0, 5.0, 20.0, 99.0):
+                self.universe.clear()
+                self.profile.render(FixtureState(dimmer=dimmer, strobe=strobe),
+                                    1, self.universe)
+                value = self.universe.get(1)
+                self.assertLess(value, 208,
+                                f"canal 1 a {value} : zone de maintenance "
+                                f"(reset/lampe) avec dimmer={dimmer} strobe={strobe}")
+
+    def test_shutter_open_is_in_the_open_range(self):
+        self.profile.render(FixtureState(dimmer=1.0), 1, self.universe)
+        self.assertTrue(20 <= self.universe.get(1) <= 49)
+
+    def test_shutter_closes_at_zero(self):
+        self.profile.render(FixtureState(dimmer=0.0), 1, self.universe)
+        self.assertEqual(self.universe.get(1), 0)
+
+    def test_strobe_stays_in_the_strobe_range(self):
+        self.profile.render(FixtureState(strobe=20.0), 1, self.universe)
+        self.assertTrue(50 <= self.universe.get(1) <= 72)
+
+    def test_speed_never_reaches_blackout_while_moving(self):
+        for speed in (0.0, 0.5, 1.0):
+            self.universe.clear()
+            self.profile.render(FixtureState(speed=speed), 1, self.universe)
+            self.assertLessEqual(self.universe.get(13), 242)
+
+    def test_positions_are_16_bit(self):
+        self.profile.render(FixtureState(pan=1.0, tilt=0.0), 1, self.universe)
+        self.assertEqual(self.universe.get(9), 255)    # pan coarse
+        self.assertEqual(self.universe.get(10), 255)   # pan fine
+        self.assertEqual(self.universe.get(11), 0)     # tilt coarse
+
+    def test_colour_slots_are_indexed_positions(self):
+        self.profile.render(FixtureState(color="rouge"), 1, self.universe)
+        self.assertEqual(self.universe.get(3), 185)
+        self.universe.clear()
+        self.profile.render(FixtureState(color="blanc"), 1, self.universe)
+        self.assertEqual(self.universe.get(3), 150)
+
+    def test_declares_its_maintenance_commands(self):
+        self.assertEqual(set(self.profile.commands), {"lamp_on", "lamp_off", "reset"})
+        self.assertTrue(228 <= self.profile.commands["lamp_on"]["value"] <= 237)
+        self.assertTrue(248 <= self.profile.commands["lamp_off"]["value"] <= 255)
+        self.assertTrue(208 <= self.profile.commands["reset"]["value"] <= 217)
+
+
+class TestLampCommands(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.show = Show(path=os.path.join(self.directory, "show.json"))
+        self.show.set_patch([
+            {"id": "m1", "name": "MAC 1", "profile_id": "mac250_krypton_14ch", "address": 1},
+            {"id": "m2", "name": "MAC 2", "profile_id": "mac250_krypton_14ch", "address": 15},
+        ])
+        self.engine = Engine(self.show, output=DummyOutput())
+
+    def test_led_fixtures_offer_no_command(self):
+        led = Show(path=os.path.join(tempfile.mkdtemp(), "s.json"))
+        self.assertEqual(Engine(led, output=DummyOutput()).available_commands(), [])
+
+    def test_discharge_fixtures_offer_the_three_commands(self):
+        names = {c["name"] for c in self.engine.available_commands()}
+        self.assertEqual(names, {"lamp_on", "lamp_off", "reset"})
+
+    def test_strike_is_staggered_across_lamps(self):
+        scheduled = self.engine.run_command("lamp_on", now=0.0)
+        self.assertEqual([s["delay"] for s in scheduled], [0.0, 2.0])
+
+    def test_reset_is_not_staggered(self):
+        scheduled = self.engine.run_command("reset", now=0.0)
+        self.assertEqual([s["delay"] for s in scheduled], [0.0, 0.0])
+
+    def test_the_command_reaches_the_right_channel_then_releases(self):
+        self.engine.run_command("lamp_on", fixture_id="m2", now=100.0)
+        self.engine.render(now=100.5)
+        self.assertEqual(self.engine.universe.get(15), 232)   # canal 1 de MAC 2
+        self.assertNotEqual(self.engine.universe.get(1), 232)  # MAC 1 intact
+        self.engine.render(now=105.0)                          # apres les 4 s
+        self.assertNotEqual(self.engine.universe.get(15), 232)
+
+    def test_a_staggered_lamp_waits_its_turn(self):
+        self.engine.run_command("lamp_on", now=0.0)
+        self.engine.render(now=0.5)
+        self.assertEqual(self.engine.universe.get(1), 232)     # MAC 1 amorce
+        self.assertNotEqual(self.engine.universe.get(15), 232)  # MAC 2 pas encore
+        self.engine.render(now=2.5)
+        self.assertEqual(self.engine.universe.get(15), 232)
+
+    def test_command_overrides_the_running_show(self):
+        self.engine.activate_look("l12")        # plein feu, shutter ouvert
+        self.engine.run_command("lamp_on", fixture_id="m1", now=0.0)
+        self.engine.render(now=0.1)
+        self.assertEqual(self.engine.universe.get(1), 232)
+
+    def test_disabled_fixtures_are_skipped(self):
+        self.show.fixtures[0].enabled = False
+        scheduled = self.engine.run_command("lamp_on", now=0.0)
+        self.assertEqual([s["fixture"] for s in scheduled], ["MAC 2"])
+
+    def test_unknown_command_does_nothing(self):
+        self.assertEqual(self.engine.run_command("auto-destruction", now=0.0), [])
+
+    def test_progress_is_reported_then_cleared(self):
+        self.engine.run_command("reset", now=0.0)
+        self.assertEqual(len(self.engine.command_progress(now=1.0)), 2)
+        self.engine.render(now=10.0)
+        self.assertEqual(self.engine.command_progress(now=10.0), [])
+
+
 class TestFrameRate(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.mkdtemp()
